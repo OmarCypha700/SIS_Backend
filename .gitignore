@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+db.sqlite3
+db.sqlite3-journal
+*.sqlite3.bak
+media/
+staticfiles/
+.pytest_cache/
+.coverage
+htmlcov/
+backups/
+e2e.sqlite3
+.claude/
+.test-media/

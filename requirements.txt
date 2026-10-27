@@ -1,0 +1,11 @@
+Django>=5.2,<6.0
+djangorestframework>=3.16,<4.0
+django-environ>=0.12
+django-filter>=25.1
+django-cors-headers>=4.7
+drf-spectacular>=0.28
+Pillow>=11.0
+# PostgreSQL driver (production). Safe to install in development as well.
+psycopg[binary]>=3.2
+openpyxl>=3.1
+reportlab>=4.2
