@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .env
+.env.example
 db.sqlite3
 db.sqlite3-journal
 *.sqlite3.bak
