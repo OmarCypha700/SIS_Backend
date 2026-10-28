@@ -3,6 +3,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from common.bulk import BulkIdsField
+
 from .models import CAPABILITY_FIELDS, DEFAULT_CAPABILITIES, Role, User
 
 
@@ -40,6 +42,16 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     new_password = serializers.CharField(trim_whitespace=False, write_only=True)
 
 
+class ReasonInputSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=2000)
+
+
+class UserBulkSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=["deactivate", "activate", "delete"])
+    ids = BulkIdsField()
+    reason = serializers.CharField(max_length=2000)
+
+
 class CurrentUserSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source="get_full_name", read_only=True)
     role_display = serializers.CharField(source="get_role_display", read_only=True)
@@ -50,9 +62,9 @@ class CurrentUserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id", "email", "title", "first_name", "last_name", "full_name", "phone", "role", "role_display",
-            "capabilities", "must_change_password", "student",
+            "capabilities", "must_change_password", "student", "email_alerts", "notification_sound",
         ]
-        read_only_fields = [f for f in fields if f != "phone"]
+        read_only_fields = [f for f in fields if f not in ("phone", "email_alerts", "notification_sound")]
 
     @extend_schema_field({"type": "object", "additionalProperties": {"type": "boolean"}})
     def get_capabilities(self, user):

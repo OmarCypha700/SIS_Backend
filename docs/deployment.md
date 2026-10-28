@@ -23,7 +23,11 @@ Copy `.env.example` to `.env` next to `manage.py` and set:
 | `FRONTEND_URL` | `http://localhost:3000` | `https://<frontend-domain>` (used in reset emails) |
 | `CSRF_TRUSTED_ORIGINS` | `http://localhost:3000` | `https://<frontend-domain>` |
 | `CORS_ALLOWED_ORIGINS` | unused with the proxy | leave empty unless something calls the API cross-origin |
-| `EMAIL_*`, `DEFAULT_FROM_EMAIL` | console backend | your SMTP provider |
+| `EMAIL_BACKEND` | console backend | `anymail.backends.brevo.EmailBackend` |
+| `BREVO_API_KEY` | empty | Brevo → *SMTP & API* → *API keys* (keep secret) |
+| `DEFAULT_FROM_EMAIL` | any | a sender verified in Brevo, e.g. `SIS <no-reply@your-college.edu.gh>` |
+| `EMAIL_DAILY_LIMIT`, `EMAIL_SECURITY_RESERVE` | 300, 60 | Brevo free plan: 300 (lower it if you also send campaigns) |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | empty (push off) | from `python manage.py generate_vapid_keys`; subject `mailto:<it contact>` |
 | `DJANGO_ADMIN_ENABLED` | `True` | `False` (enable temporarily if needed) |
 | `MEDIA_ROOT` | `./media` | e.g. `/home/<username>/sis-media` |
 
@@ -68,6 +72,21 @@ Never commit `.env`.
    The settings read `.env` from the project folder automatically.
 5. **Reload** the web app and open `https://<username>.pythonanywhere.com/api/v1/institution/`.
    You should see JSON. Errors are in the *error log* linked on the Web tab.
+6. **Email (Brevo).** Create a free Brevo account and set it up:
+   * Under *Senders, Domains & Dedicated IPs*, verify the sender address.
+   * Authenticate your domain with the DKIM and SPF records Brevo shows, so mail is not marked as spam.
+   * Create an API key under *SMTP & API → API keys*.
+   * Put the backend, key and verified sender in `.env` (section 2) and reload.
+   * Test it with *Forgot password*. Brevo's *Transactional → Logs* shows each email.
+7. **Push notifications.** Run `python manage.py generate_vapid_keys`, copy the three lines into
+   `.env`, and reload. Generate the keys once: changing them later means everyone has to turn push on again.
+8. **Scheduled task (required).** On the *Tasks* tab, add a daily task at 06:00 UTC:
+   ```bash
+   cd ~/sis-backend && ~/.virtualenvs/sis/bin/python manage.py send_pending_messages --settings=config.settings.prod
+   ```
+   It sends whatever did not go out straight away and merges waiting alert emails into digests.
+   A free account allows one daily task. On a paid account, run it hourly.
+   See [notifications.md](notifications.md).
 
 SQLite on PythonAnywhere is acceptable only for demonstrations. Use PostgreSQL (section 6) for pilots.
 

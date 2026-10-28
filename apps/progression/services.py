@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.academics.models import CourseCategory, Level, ProgrammeCourse, Semester
 from apps.audit.services import log_action, snapshot
 from apps.institutions.models import AcademicRegulation, InstitutionProfile
+from apps.notifications import events as notify_events
 from apps.registration.models import CourseRegistration, RegistrationStatus, SemesterRegistration
 from apps.results import grading
 from apps.results.models import CourseResult
@@ -243,6 +244,7 @@ def apply_review(review, *, actor):
     label = f"Progression review {review.semester}"
     regulation = AcademicRegulation.load()
     counts = {"applied": 0, "skipped_incomplete": 0, "excluded": 0}
+    applied = []
     for decision in review.decisions.select_related("student__programme", "student__current_level"):
         if decision.excluded:
             counts["excluded"] += 1
@@ -255,7 +257,7 @@ def apply_review(review, *, actor):
         if decision.final_standing == Standing.DISMISS:
             status = regulation.dismissal_status or StudentStatus.DISMISSED
             if student.status != status:
-                student_services.change_status(student, status=status, reason=reason, actor=actor)
+                student_services.change_status(student, status=status, reason=reason, actor=actor, notify=False)
         else:
             new_standing = (AcademicStanding.PROBATION if decision.final_standing == Standing.PROBATION
                             else AcademicStanding.GOOD)
@@ -273,10 +275,12 @@ def apply_review(review, *, actor):
                                                       reason=reason, actor=actor)
         decision.applied = True
         decision.save(update_fields=["applied", "updated_at"])
+        applied.append(decision)
         counts["applied"] += 1
     review.status, review.applied_by, review.applied_at = ReviewStatus.APPLIED, actor, timezone.now()
     review.save()
     log_action("progression.applied", actor=actor, instance=review, summary=f"Applied {label}", metadata=counts)
+    notify_events.progression_applied(applied, actor)
     return counts
 
 

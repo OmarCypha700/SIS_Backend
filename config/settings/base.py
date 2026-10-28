@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "apps.registration",
     "apps.results",
     "apps.progression",
+    "apps.notifications",
     "apps.dashboard",
 ]
 
@@ -143,6 +144,17 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@example.edu")
+# Brevo (production): EMAIL_BACKEND=anymail.backends.brevo.EmailBackend and BREVO_API_KEY.
+ANYMAIL = {"BREVO_API_KEY": env("BREVO_API_KEY", default="")}
+# Daily sending allowance shared by every email this installation sends (Brevo free plan: 300).
+# Alerts may only use EMAIL_DAILY_LIMIT - EMAIL_SECURITY_RESERVE so password resets always get through.
+EMAIL_DAILY_LIMIT = env.int("EMAIL_DAILY_LIMIT", default=300)
+EMAIL_SECURITY_RESERVE = env.int("EMAIL_SECURITY_RESERVE", default=60)
+
+# --- Web push (VAPID). Generate with: python manage.py generate_vapid_keys ---
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", default="")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="")
+VAPID_SUBJECT = env("VAPID_SUBJECT", default="")
 PASSWORD_RESET_TIMEOUT = 60 * 60 * 2
 
 # --- Cache (used by throttling) -------------------------------------------

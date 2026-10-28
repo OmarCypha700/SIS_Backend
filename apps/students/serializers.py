@@ -3,6 +3,7 @@ import datetime
 from rest_framework import serializers
 
 from apps.academics.models import Level, Programme
+from common.bulk import BulkIdsField
 
 from .models import Gender, Student, StudentProgrammeHistory, StudentStatus
 
@@ -130,6 +131,18 @@ class PlacementChangeSerializer(serializers.Serializer):
 
 class ReasonSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=2000)
+
+
+class StudentBulkSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=["deactivate", "activate", "change_status", "delete"])
+    ids = BulkIdsField()
+    reason = serializers.CharField(max_length=2000)
+    status = serializers.ChoiceField(choices=StudentStatus.choices, required=False)
+
+    def validate(self, attrs):
+        if attrs["action"] == "change_status" and not attrs.get("status"):
+            raise serializers.ValidationError({"status": "Choose the new status."})
+        return attrs
 
 
 class StudentHistorySerializer(serializers.ModelSerializer):

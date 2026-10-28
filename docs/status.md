@@ -43,10 +43,26 @@
 * **Frontend** – responsive app shell (sidebar, mobile drawer, breadcrumbs, current period,
   account menu, light/dark), role-specific dashboards from live data, all screens listed in the
   brief, loading/empty/error states, confirmation dialogs with reasons for sensitive actions.
-* **Quality** – 128 backend tests and 14 Playwright end-to-end journeys passing; ESLint clean;
+* **Bulk actions and deleting records created in error** – tick students or staff accounts to change
+  status, deactivate, reactivate or (administrators only) delete them in one go. Deletion is limited to
+  records that have never been used (no registrations, results, status changes, sign-in or audit
+  activity). Anything else is skipped with the reason and should be deactivated instead. Every deletion
+  is recorded in the audit log with its reason.
+* **Notifications and installable app** – in-app notifications (bell, page), web push with an
+  app-icon badge and an in-app sound, and Brevo email for staff alerts and password resets, kept
+  within the free plan's daily limit by a reserve for security mail and daily digests. The app is
+  installable, branded from Institution settings, and has an offline page. See
+  [notifications.md](notifications.md).
+* **Quality** – 166 backend tests and 23 Playwright end-to-end journeys passing; ESLint clean;
   `check --deploy` clean apart from opt-in HSTS preload; `pip-audit` and `npm audit` clean.
 
 ## Known limitations
+
+* Push notifications, the app-icon badge and Brevo delivery have been tested with mocks and in desktop
+  Chromium only. Check them on real Android and iPhone devices, and with your Brevo account, before
+  rollout.
+* Push messages that are not sent straight away go out while people are using the app, or by the daily
+  task. On a free PythonAnywhere account, a message created late at night may wait until morning.
 
 * PostgreSQL support is configured and documented but **has not been tested** (no PostgreSQL server
   was available during development). Run the suite against PostgreSQL before production.

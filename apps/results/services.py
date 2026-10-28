@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.accounts.models import Role
 from apps.audit.services import log_action
 from apps.institutions.models import AcademicRegulation, InstitutionProfile
+from apps.notifications import events as notify_events
 from apps.registration.models import CourseRegistration, CourseRegistrationStatus
 from common.exceptions import DomainError
 
@@ -321,6 +322,7 @@ def submit_sheet(sheet, *, actor, comment=""):
     sheet.submitted_by, sheet.submitted_at, sheet.last_comment = actor, timezone.now(), comment
     sheet.save()
     _record(sheet, previous, actor, comment, "submitted")
+    notify_events.sheet_submitted(sheet, actor)
     return sheet
 
 
@@ -339,6 +341,7 @@ def return_sheet(sheet, *, actor, comment):
     sheet.approved_by, sheet.approved_at, sheet.last_comment = None, None, comment
     sheet.save()
     _record(sheet, previous, actor, comment, "returned")
+    notify_events.sheet_returned(sheet, actor)
     return sheet
 
 
@@ -359,6 +362,7 @@ def approve_sheet(sheet, *, actor, comment=""):
     sheet.approved_by, sheet.approved_at, sheet.last_comment = actor, timezone.now(), comment
     sheet.save()
     _record(sheet, previous, actor, comment, "approved")
+    notify_events.sheet_approved(sheet, actor)
     return sheet
 
 
@@ -376,6 +380,7 @@ def publish_sheet(sheet, *, actor, comment=""):
     sheet.save()
     sheet.results.update(is_published=True, published_at=now)
     _record(sheet, previous, actor, comment, "published")
+    notify_events.sheet_published(sheet, actor)
     return sheet
 
 
@@ -443,6 +448,7 @@ def request_amendment(result, *, new_marks, reason, actor):
                summary=f"Amendment requested for {result}",
                before={"total": str(result.total_score), "grade": result.grade, "marks": original},
                after={"total": str(rounded), "grade": band.letter, "marks": proposed})
+    notify_events.amendment_requested(amendment, actor)
     return amendment
 
 
@@ -467,6 +473,7 @@ def review_amendment(amendment, *, approve, actor, comment=""):
         amendment.save()
         log_action("results.amendment_rejected", actor=actor, instance=amendment, reason=comment,
                    summary=f"Amendment rejected for {result}")
+        notify_events.amendment_reviewed(amendment, actor)
         return amendment
 
     if _current_marks(result) != amendment.original_marks:
@@ -491,6 +498,7 @@ def review_amendment(amendment, *, approve, actor, comment=""):
                summary=f"Published result amended for {result.student.student_number} {result.offering.course.code}",
                before=before, after={"total": str(rounded), "grade": band.letter, "grade_point": str(band.grade_point)},
                metadata={"amendment": amendment.pk, "requested_by": amendment.requested_by_id})
+    notify_events.amendment_reviewed(amendment, actor)
     return amendment
 
 

@@ -1,4 +1,6 @@
-from drf_spectacular.utils import extend_schema
+from django.http import HttpResponse, HttpResponseNotModified
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -8,6 +10,7 @@ from apps.accounts.models import Role
 from apps.audit.services import diff, log_action, snapshot
 from common.permissions import RoleBasedPermission
 
+from . import app_icon
 from .models import AcademicRegulation, InstitutionProfile
 from .regulation_presets import preset_list
 from .serializers import AcademicRegulationSerializer, InstitutionBrandingSerializer, InstitutionProfileSerializer
@@ -19,6 +22,33 @@ class InstitutionBrandingView(APIView):
     @extend_schema(responses=InstitutionBrandingSerializer, summary="Public institution branding")
     def get(self, request):
         return Response(InstitutionBrandingSerializer(InstitutionProfile.load()).data)
+
+
+class AppIconView(APIView):
+    """Icons for the installable app, drawn from the logo or initials and the primary colour."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(parameters=[OpenApiParameter("size", int, enum=list(app_icon.SIZES)),
+                               OpenApiParameter("purpose", str, enum=list(app_icon.PURPOSES))],
+                   responses={(200, "image/png"): OpenApiTypes.BINARY})
+    def get(self, request):
+        try:
+            size = int(request.query_params.get("size", 192))
+        except ValueError:
+            size = 0
+        purpose = request.query_params.get("purpose", "any")
+        if size not in app_icon.SIZES or purpose not in app_icon.PURPOSES:
+            return HttpResponse(status=404)
+        profile = InstitutionProfile.load()
+        tag = f'"{app_icon.etag(profile, size, purpose)}"'
+        if request.headers.get("If-None-Match") == tag:
+            return HttpResponseNotModified()
+        response = HttpResponse(app_icon.render(profile, size, purpose), content_type="image/png")
+        response["ETag"] = tag
+        response["Cache-Control"] = "public, max-age=86400"
+        return response
 
 
 class InstitutionSettingsView(APIView):

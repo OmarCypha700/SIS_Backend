@@ -14,6 +14,7 @@ from django.utils import timezone
 from apps.academics.models import CourseCategory, CourseOffering, OfferingStatus, PeriodStatus, ProgrammeCourse
 from apps.audit.services import log_action
 from apps.institutions.models import AcademicRegulation, InstitutionProfile
+from apps.notifications import events as notify_events
 from apps.results.models import CourseResult, StudentMark
 from apps.results.services import student_course_history
 from apps.students.models import StatusPolicy
@@ -323,6 +324,8 @@ def submit_registration(student, semester, offering_ids, *, actor, on_behalf=Fal
         after={"offerings": sorted(requested), "status": registration.status, "credits": total_credits},
         before={"offerings": sorted(existing)},
     )
+    if registration.status == RegistrationStatus.PENDING:
+        notify_events.registration_pending(registration, actor)
     return registration
 
 
@@ -347,4 +350,5 @@ def review_registration(registration, *, approve, actor, comment=""):
     )
     log_action("registration.approved" if approve else "registration.rejected", actor=actor, instance=registration,
                reason=comment or "", summary=f"Registration {registration} {'approved' if approve else 'rejected'}")
+    notify_events.registration_reviewed(registration, actor)
     return registration

@@ -5,23 +5,15 @@ Imported accounts get no password. Each new user is emailed a single-use link (v
 PASSWORD_RESET_TIMEOUT) to choose their own, so no passwords ever pass through spreadsheets.
 An administrator can still set a temporary password for anyone who cannot receive email.
 """
-import logging
-
-from django.conf import settings
-from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
 from django.db import transaction
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
 from rest_framework import serializers
 
 from apps.audit.services import log_action
+from apps.notifications import services as notifications
 from common.exceptions import DomainError
 from common.importing import row_result, serializer_errors
 
 from .models import DEFAULT_CAPABILITIES, Role, User
-
-logger = logging.getLogger(__name__)
 
 COLUMNS = ["email", "title", "first_name", "last_name", "phone", "staff_id", "role"]
 REQUIRED = {"email", "first_name", "last_name", "role"}
@@ -89,20 +81,6 @@ def validate_rows(rows):
     return results
 
 
-def send_account_setup_email(user):
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
-    link = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?uid={uid}&token={token}"
-    send_mail(
-        "Your staff account is ready",
-        f"Hello {user.first_name},\n\nAn account has been created for you as {user.get_role_display()}.\n"
-        f"Choose your password using the link below (it expires in {settings.PASSWORD_RESET_TIMEOUT // 3600} hours):\n\n"
-        f"{link}\n\nYour sign-in email is {user.email}.",
-        settings.DEFAULT_FROM_EMAIL,
-        [user.email],
-    )
-
-
 @transaction.atomic
 def import_staff(rows, *, actor, send_emails=True):
     results = validate_rows(rows)
@@ -121,13 +99,7 @@ def import_staff(rows, *, actor, send_emails=True):
                summary=f"Imported {len(created)} staff accounts",
                metadata={"emails": [u.email for u in created][:500], "roles": sorted({u.role for u in created})})
     if send_emails:
-        # Sent after the rows exist; a mail failure must not undo the import.
-        transaction.on_commit(lambda: [_safe_send(u) for u in created])
+        # Queued after the rows exist and sent within the daily email allowance; a mail failure
+        # never undoes the import. Links are generated when each email is actually sent.
+        notifications.send_security_emails(created, "account_setup")
     return created
-
-
-def _safe_send(user):
-    try:
-        send_account_setup_email(user)
-    except Exception:  # noqa: BLE001 - mail outages are reported in the log, the account stays valid
-        logger.exception("Could not send the account setup email to user %s", user.pk)

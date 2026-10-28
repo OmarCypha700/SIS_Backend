@@ -2,8 +2,10 @@ from django.db import transaction
 from django.db.models.functions import Lower
 
 from apps.accounts.models import Role, User
+from apps.accounts.services import account_usage, delete_or_explain, require_reason
 from apps.audit.services import diff, log_action, snapshot
 from apps.institutions.services import next_student_number
+from apps.notifications import events as notify_events
 from common.exceptions import DomainError
 
 from .models import Student, StudentProgrammeHistory
@@ -47,7 +49,7 @@ def update_student(student, data, *, actor):
 
 
 @transaction.atomic
-def change_status(student, *, status, reason, actor):
+def change_status(student, *, status, reason, actor, notify=True):
     if student.status == status:
         raise DomainError("The student already has this status.")
     previous = student.status
@@ -60,6 +62,8 @@ def change_status(student, *, status, reason, actor):
     log_action("student.status_changed", actor=actor, instance=student, reason=reason,
                summary=f"{student.student_number}: {previous} -> {status}",
                before={"status": previous}, after={"status": status})
+    if notify:
+        notify_events.student_status_changed(student, actor)
     return student
 
 
@@ -92,6 +96,40 @@ def set_active(student, *, active, reason, actor):
     log_action("student.activated" if active else "student.deactivated", actor=actor, instance=student,
                reason=reason, summary=f"{'Re-activated' if active else 'Deactivated'} {student.student_number}")
     return student
+
+
+# --- Records created in error ---------------------------------------------
+
+def deletion_blockers(student):
+    """Reasons the record cannot be deleted. Only records that were never used can be."""
+    reasons = []
+    if student.registrations.exists() or student.course_registrations.exists():
+        reasons.append("The student has course registrations.")
+    if student.course_results.exists():
+        reasons.append("The student has results.")
+    if student.progression_decisions.exists():
+        reasons.append("The student is part of a progression review.")
+    if student.history.exclude(change_type=StudentProgrammeHistory.ChangeType.ADMISSION).exists():
+        reasons.append("The record has status, programme or level changes.")
+    reasons += account_usage(student.user)
+    return reasons
+
+
+@transaction.atomic
+def delete_in_error(student, *, reason, actor):
+    """Permanently remove a student record created by mistake (duplicate, bad import, test)."""
+    require_reason(reason)
+    blockers = deletion_blockers(student)
+    if blockers:
+        raise DomainError("This record cannot be deleted: " + " ".join(blockers) + " Deactivate it instead.",
+                          code="has_history", status_code=409)
+    summary = {"student_number": student.student_number, "name": student.full_name, "email": student.email,
+               "programme": student.programme.code, "admission_year": student.admission_year}
+    entity_id, user = student.pk, student.user
+    delete_or_explain(student)
+    delete_or_explain(user)
+    log_action("student.deleted", actor=actor, entity_type="students.student", entity_id=str(entity_id), reason=reason,
+               summary=f"Deleted {summary['student_number']} (created in error)", before=summary)
 
 
 # --- CSV import -----------------------------------------------------------

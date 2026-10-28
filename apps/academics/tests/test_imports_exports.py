@@ -207,10 +207,11 @@ def test_staff_import_sends_setup_links_without_passwords(admin_user, api):
     assert done.status_code == 204
 
 
-def test_forgot_password_works_for_accounts_without_password(world, api):
+def test_forgot_password_works_for_accounts_without_password(world, api, django_capture_on_commit_callbacks):
     world.student.user.set_unusable_password()
     world.student.user.save()
-    api.post("/api/v1/auth/password/reset/", {"email": world.student.email}, format="json")
+    with django_capture_on_commit_callbacks(execute=True):
+        api.post("/api/v1/auth/password/reset/", {"email": world.student.email}, format="json")
     assert len(mail.outbox) == 1
 
 

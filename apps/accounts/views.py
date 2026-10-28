@@ -1,11 +1,10 @@
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
 from django.db.models import Q
 from django.utils.decorators import method_decorator
-from django.utils.encoding import force_bytes, force_str
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -19,18 +18,22 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.audit.services import diff, log_action, snapshot
+from apps.notifications import services as notifications
+from common.bulk import run_bulk
 from common.exceptions import DomainError
 from common.importing import preview_payload, records_from_confirm, records_from_upload
 from common.permissions import RoleBasedPermission
 from common.tabular import requested_format, table_response
 
 from . import importing
+from . import services as account_services
 
 from .models import CAPABILITY_FIELDS, Role, User
 from .serializers import (
     AdminPasswordResetSerializer, CurrentUserSerializer, LecturerSummarySerializer, LoginSerializer,
     PasswordChangeSerializer,
-    PasswordResetConfirmSerializer, PasswordResetRequestSerializer, UserSerializer, validate_new_password,
+    PasswordResetConfirmSerializer, PasswordResetRequestSerializer, ReasonInputSerializer, UserBulkSerializer,
+    UserSerializer, validate_new_password,
 )
 
 AUDITED_USER_FIELDS = ["role", "is_active", "email", *CAPABILITY_FIELDS]
@@ -121,17 +124,7 @@ class PasswordResetRequestView(APIView):
         serializer.is_valid(raise_exception=True)
         user = User.objects.filter(email=serializer.validated_data["email"].lower(), is_active=True).first()
         if user is not None:
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            link = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?uid={uid}&token={token}"
-            send_mail(
-                "Reset your password",
-                f"Hello {user.first_name},\n\nUse the link below to choose a new password. "
-                f"It expires in {settings.PASSWORD_RESET_TIMEOUT // 3600} hours.\n\n{link}\n\n"
-                "If you did not request this, you can ignore this email.",
-                settings.DEFAULT_FROM_EMAIL,
-                [user.email],
-            )
+            notifications.send_security_email(user, "password_reset")
             log_action("auth.password_reset_requested", actor=None, instance=user, summary="Password reset requested")
         # Always the same response so the endpoint cannot be used to discover accounts.
         return Response({"detail": "If an account exists for that email, a reset link has been sent."})
@@ -169,7 +162,7 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
     permission_classes = [RoleBasedPermission]
     read_roles = (Role.ADMIN,)
     write_roles = (Role.ADMIN,)
-    action_roles = {"lecturers": (Role.ADMIN, Role.REGISTRAR, Role.RESULTS_OFFICER)}
+    action_roles = {"lecturers": (Role.ADMIN, Role.REGISTRAR, Role.RESULTS_OFFICER)}  # others: ADMIN
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["role", "is_active"]
     search_fields = ["email", "first_name", "last_name", "staff_id"]
@@ -202,6 +195,49 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
                    summary=f"{'Activated' if active else 'Deactivated'} {user.email}",
                    reason=request.data.get("reason", ""))
         return Response(self.get_serializer(user).data)
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    @action(detail=True, methods=["get"], url_path="deletion-check")
+    def deletion_check(self, request, pk=None):
+        blockers = account_services.staff_deletion_blockers(self.get_object(), request.user)
+        return Response({"can_delete": not blockers, "blockers": blockers})
+
+    @extend_schema(request=ReasonInputSerializer, responses={204: None})
+    @action(detail=True, methods=["post"], url_path="delete-record")
+    def delete_record(self, request, pk=None):
+        """Permanently remove an account created in error. Refused once it has been used."""
+        payload = ReasonInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        account_services.delete_staff_account(self.get_object(), reason=payload.validated_data["reason"],
+                                              actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(request=UserBulkSerializer, responses={200: OpenApiTypes.OBJECT})
+    @action(detail=False, methods=["post"])
+    def bulk(self, request):
+        payload = UserBulkSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        action_name, reason, actor = data["action"], data["reason"], request.user
+
+        def set_active(user, active):
+            if user.pk == actor.pk and not active:
+                raise DomainError("You cannot deactivate your own account.")
+            if user.is_active == active:
+                raise DomainError("Already active." if active else "Already disabled.")
+            user.is_active = active
+            user.save(update_fields=["is_active", "updated_at"])
+            log_action("user.activated" if active else "user.deactivated", actor=actor, instance=user, reason=reason,
+                       summary=f"{'Activated' if active else 'Deactivated'} {user.email}")
+
+        operations = {
+            "deactivate": lambda u: set_active(u, False),
+            "activate": lambda u: set_active(u, True),
+            "delete": lambda u: account_services.delete_staff_account(u, reason=reason, actor=actor),
+        }
+        outcome = run_bulk(self.get_queryset(), data["ids"], operations[action_name],
+                           label=lambda u: f"{u.get_full_name()} <{u.email}>")
+        return Response(outcome)
 
     @extend_schema(request=None)
     @action(detail=True, methods=["post"])
@@ -241,7 +277,10 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
         rows = records_from_confirm(request, max_rows=2000)
         send = str(request.data.get("send_setup_emails", "true")).lower() != "false"
         created = importing.import_staff(rows, actor=request.user, send_emails=send)
-        return Response({"created": len(created), "emails_sent": send}, status=status.HTTP_201_CREATED)
+        # Set-up emails count against the daily email allowance; any that did not fit wait in the queue.
+        waiting = notifications.pending_security_emails(created) if send else 0
+        return Response({"created": len(created), "emails_sent": send, "emails_waiting": waiting},
+                        status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[OpenApiParameter("file_format", str)], responses={200: OpenApiTypes.BINARY})
     @action(detail=False, methods=["get"], url_path="import/template")

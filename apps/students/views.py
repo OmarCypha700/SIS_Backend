@@ -14,6 +14,7 @@ from apps.results.services import build_academic_record
 from common import pdf
 from common.pdf import pdf_response
 from common.tabular import read_table, requested_format, table_response
+from common.bulk import run_bulk
 from common.exceptions import DomainError
 from common.permissions import RoleBasedPermission
 
@@ -21,7 +22,7 @@ from . import services
 from .models import Student
 from .serializers import (
     IMPORT_COLUMNS, PlacementChangeSerializer, ReasonSerializer, StatusChangeSerializer, StudentHistorySerializer,
-    StudentSelfSerializer, StudentSerializer, StudentSummarySerializer,
+    StudentBulkSerializer, StudentSelfSerializer, StudentSerializer, StudentSummarySerializer,
 )
 
 REGISTRY = (Role.ADMIN, Role.REGISTRAR)
@@ -49,6 +50,9 @@ class StudentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
         "history": REGISTRY,
         "academic_record": (Role.ADMIN, Role.REGISTRAR, Role.RESULTS_OFFICER),
         "transcript_pdf": (Role.ADMIN, Role.REGISTRAR, Role.RESULTS_OFFICER),
+        "deletion_check": (Role.ADMIN,),
+        "delete_record": (Role.ADMIN,),
+        "bulk": REGISTRY,
     }
     filterset_class = StudentFilter
     search_fields = ["student_number", "first_name", "last_name", "middle_name", "email"]
@@ -125,6 +129,45 @@ class StudentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
     @action(detail=True, methods=["post"])
     def activate(self, request, pk=None):
         return self._set_active(request, True)
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    @action(detail=True, methods=["get"], url_path="deletion-check")
+    def deletion_check(self, request, pk=None):
+        blockers = services.deletion_blockers(self.get_object())
+        return Response({"can_delete": not blockers, "blockers": blockers})
+
+    @extend_schema(request=ReasonSerializer, responses={204: None})
+    @action(detail=True, methods=["post"], url_path="delete-record")
+    def delete_record(self, request, pk=None):
+        """Permanently remove a record created in error. Refused once it has any history."""
+        payload = ReasonSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        services.delete_in_error(self.get_object(), reason=payload.validated_data["reason"], actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(request=StudentBulkSerializer, responses={200: OpenApiTypes.OBJECT})
+    @action(detail=False, methods=["post"])
+    def bulk(self, request):
+        """Apply one action to the selected students. Records that cannot be changed are skipped and listed."""
+        payload = StudentBulkSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        action_name, reason, actor = data["action"], data["reason"], request.user
+        if action_name == "delete" and actor.role != Role.ADMIN:
+            raise DomainError("Only administrators can delete records.", code="permission_denied", status_code=403)
+        operations = {
+            "deactivate": lambda s: services.set_active(s, active=False, reason=reason, actor=actor),
+            "activate": lambda s: services.set_active(s, active=True, reason=reason, actor=actor),
+            "change_status": lambda s: services.change_status(s, status=data.get("status"), reason=reason, actor=actor),
+            "delete": lambda s: services.delete_in_error(s, reason=reason, actor=actor),
+        }
+        outcome = run_bulk(self.get_queryset(), data["ids"], operations[action_name],
+                           label=lambda s: f"{s.student_number} {s.full_name}")
+        log_action(f"student.bulk_{action_name}", actor=actor, entity_type="students.student", reason=reason,
+                   summary=f"Bulk {action_name.replace('_', ' ')}: {len(outcome['done'])} done, "
+                           f"{len(outcome['skipped'])} skipped",
+                   metadata={"done": [d["id"] for d in outcome["done"]], "status": data.get("status")})
+        return Response(outcome)
 
     @extend_schema(responses=StudentHistorySerializer(many=True))
     @action(detail=True, methods=["get"])

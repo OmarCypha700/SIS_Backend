@@ -16,6 +16,7 @@ serves exactly one institution, with its own database.
 | [docs/testing.md](docs/testing.md) | Running backend and end-to-end tests |
 | [docs/deployment.md](docs/deployment.md) | PythonAnywhere, Vercel, PostgreSQL, new institutions, backups, updates, troubleshooting |
 | [docs/academic-regulations.md](docs/academic-regulations.md) | Resits, retakes, progression, probation and dismissal rules |
+| [docs/notifications.md](docs/notifications.md) | In-app, push and email notifications, Brevo limits, the installable app |
 | [docs/status.md](docs/status.md) | What is done, known limitations, next steps |
 
 ## Quick start (local development)

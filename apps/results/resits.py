@@ -18,6 +18,7 @@ from django.utils import timezone
 from apps.accounts.models import Role
 from apps.audit.services import log_action
 from apps.institutions.models import AcademicRegulation, InstitutionProfile
+from apps.notifications import events as notify_events
 from common.exceptions import DomainError
 
 from . import grading
@@ -69,6 +70,7 @@ def open_resit(offering, *, actor, registration_deadline=None):
     ])
     log_action("resit.opened", actor=actor, instance=resit, summary=f"Resit opened for {offering}",
                metadata={"eligible": len(candidates), "deadline": registration_deadline})
+    notify_events.resit_opened(resit, actor)
     return resit
 
 
@@ -173,6 +175,7 @@ def _transition(sheet, *, actor, to_status, comment, action):
     log_action(f"resit.{action}", actor=actor, instance=sheet, reason=comment,
                summary=f"Resit {sheet.offering}: {previous} -> {to_status}",
                before={"status": previous}, after={"status": to_status})
+    notify_events.resit_changed(sheet, actor, to_status)
 
 
 @transaction.atomic

@@ -84,6 +84,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     # is_staff only grants access to Django's own /django-admin/ site, never to the API.
     is_staff = models.BooleanField(default=False)
     must_change_password = models.BooleanField(default=False)
+    # Notification preferences. Security email (password reset) is always sent.
+    email_alerts = models.BooleanField(default=True, help_text="Email me when something needs my action (staff).")
+    notification_sound = models.BooleanField(default=True, help_text="Play a sound for new notifications in the app.")
     date_joined = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 

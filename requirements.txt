@@ -9,3 +9,6 @@ Pillow>=11.0
 psycopg[binary]>=3.2
 openpyxl>=3.1
 reportlab>=4.2
+# Transactional email through Brevo's HTTP API, and web push notifications
+django-anymail[brevo]>=13.0
+pywebpush>=2.0

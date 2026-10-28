@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from apps.accounts.models import STAFF_ROLES, Role
 from apps.audit.mixins import AuditedModelMixin
 from apps.audit.services import log_action
+from apps.notifications import events as notify_events
 from common.exceptions import DomainError
 from common.importing import preview_payload, records_from_confirm, records_from_upload
 from common.permissions import RoleBasedPermission
@@ -209,6 +210,7 @@ class CourseOfferingViewSet(AcademicViewSet):
         log_action("course_offering.lecturers_assigned", actor=request.user, instance=offering,
                    summary=f"Updated lecturers for {offering}", before={"lecturers": before},
                    after={"lecturers": after})
+        notify_events.lecturers_assigned(offering, sorted(set(after) - set(before)), request.user)
         return Response(self.get_serializer(self.get_queryset().get(pk=offering.pk)).data)
 
     @extend_schema(request=GenerateOfferingsSerializer)

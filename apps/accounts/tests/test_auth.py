@@ -85,8 +85,9 @@ def test_password_change_validates_current_password(lecturer):
     assert lecturer.check_password("New-Pass-12345")
 
 
-def test_password_reset_flow(api, lecturer):
-    response = api.post("/api/v1/auth/password/reset/", {"email": lecturer.email}, format="json")
+def test_password_reset_flow(api, lecturer, django_capture_on_commit_callbacks):
+    with django_capture_on_commit_callbacks(execute=True):
+        response = api.post("/api/v1/auth/password/reset/", {"email": lecturer.email}, format="json")
     unknown = api.post("/api/v1/auth/password/reset/", {"email": "nobody@example.test"}, format="json")
     assert response.status_code == unknown.status_code == 200
     assert response.data == unknown.data
