@@ -10,6 +10,7 @@ from apps.academics.models import CourseOffering, Semester
 from apps.accounts.models import Role
 from apps.audit.services import log_action
 from apps.students.models import StatusPolicy, Student
+from apps.students.photos import photo_url
 from common import pdf
 from common.pdf import pdf_response
 from common.tabular import requested_format, table_response
@@ -279,6 +280,7 @@ class ClassListViewSet(viewsets.ViewSet):
         rows = [{
             "registration": cr.id, "student_id": cr.student_id, "student_number": cr.student.student_number,
             "full_name": cr.student.full_name, "email": cr.student.email, "programme_code": cr.student.programme.code,
+            "thumbnail_url": photo_url(cr.student, "thumb"), "photo_url": photo_url(cr.student),
             "level_name": cr.student.current_level.name, "is_retake": cr.is_retake, "category": cr.category,
         } for cr in registrations]
         export = request.query_params.get("export")

@@ -16,6 +16,7 @@ class Kind(models.TextChoices):
     TEACHING_ASSIGNED = "TEACHING_ASSIGNED", "Teaching assignment"
     PROGRESSION_APPLIED = "PROGRESSION_APPLIED", "Progression decision"
     STATUS_CHANGED = "STATUS_CHANGED", "Status changed"
+    SIGNOFF_BLOCKED = "SIGNOFF_BLOCKED", "Sign-off needs attention"
     TEST = "TEST", "Test notification"
 
 

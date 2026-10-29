@@ -31,6 +31,19 @@ def sheet_submitted(sheet, actor):
     notify(users_with("can_approve_results"), kind=Kind.RESULTS_SUBMITTED, actor=actor,
            title=f"Results submitted for {offering.course.code}",
            body=f"{_course(offering)} is waiting for your review.", link=f"/results/sheets/{sheet.pk}")
+    signoff_check(sheet, offering, f"/results/sheets/{sheet.pk}")
+
+
+def signoff_check(sheet, offering, link):
+    """Tell administrators when nobody but the submitter can approve or publish this sheet."""
+    from apps.results import signoff
+
+    warnings = signoff.gaps(sheet)
+    if not warnings:
+        return
+    admins = list(User.objects.filter(is_active=True, role="ADMIN"))
+    notify(admins, kind=Kind.SIGNOFF_BLOCKED, title=f"Sign-off blocked: {offering.course.code}",
+           body=" ".join(w["message"] for w in warnings), link=link)
 
 
 def sheet_returned(sheet, actor):
@@ -47,6 +60,7 @@ def sheet_approved(sheet, actor):
     notify(users_with("can_publish_results"), kind=Kind.RESULTS_APPROVED, actor=actor,
            title=f"Results ready to publish: {offering.course.code}",
            body=f"{_course(offering)} has been approved and can be published.", link=f"/results/sheets/{sheet.pk}")
+    signoff_check(sheet, offering, f"/results/sheets/{sheet.pk}")
     notify(lecturers_of(offering), kind=Kind.RESULTS_APPROVED, actor=actor,
            title=f"Results approved for {offering.course.code}", link=f"/results/courses/{offering.pk}")
 
@@ -97,6 +111,7 @@ def resit_changed(resit, actor, status):
     if status == "SUBMITTED":
         notify(users_with("can_approve_results"), kind=Kind.RESIT_UPDATED, actor=actor,
                title=f"Resit scores submitted for {code}", body="Waiting for your review.", link=link)
+        signoff_check(resit, offering, link)
     elif status == "RETURNED":
         recipients = lecturers_of(offering) + ([resit.submitted_by] if resit.submitted_by_id else [])
         notify(recipients, kind=Kind.RESIT_UPDATED, actor=actor, title=f"Resit scores returned for {code}",
@@ -104,6 +119,7 @@ def resit_changed(resit, actor, status):
     elif status == "APPROVED":
         notify(users_with("can_publish_results"), kind=Kind.RESIT_UPDATED, actor=actor,
                title=f"Resit ready to publish: {code}", link=link)
+        signoff_check(resit, offering, link)
     elif status == "PUBLISHED":
         notify(lecturers_of(offering), kind=Kind.RESIT_UPDATED, actor=actor,
                title=f"Resit results published for {code}", link=link)

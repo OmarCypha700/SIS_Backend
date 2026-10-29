@@ -22,12 +22,16 @@ CAPABILITY_FIELDS = (
     "can_publish_results",
     "can_request_amendments",
     "can_approve_amendments",
+    "can_issue_transcripts",
 )
+# Only these roles may ever be given the transcript permission.
+TRANSCRIPT_ISSUER_ROLES = ("ADMIN", "REGISTRAR")
 DEFAULT_CAPABILITIES = {
     Role.ADMIN: {"can_approve_results": False, "can_publish_results": True,
-                 "can_request_amendments": False, "can_approve_amendments": True},
+                 "can_request_amendments": False, "can_approve_amendments": True, "can_issue_transcripts": True},
+    # Registrars issue official transcripts only when an administrator allows it.
     Role.REGISTRAR: {"can_approve_results": False, "can_publish_results": True,
-                     "can_request_amendments": False, "can_approve_amendments": True},
+                     "can_request_amendments": False, "can_approve_amendments": True, "can_issue_transcripts": False},
     Role.RESULTS_OFFICER: {"can_approve_results": True, "can_publish_results": False,
                            "can_request_amendments": True, "can_approve_amendments": False},
     Role.LECTURER: {"can_approve_results": False, "can_publish_results": False,
@@ -79,6 +83,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     can_publish_results = models.BooleanField(default=False)
     can_request_amendments = models.BooleanField(default=False)
     can_approve_amendments = models.BooleanField(default=False)
+    can_issue_transcripts = models.BooleanField(default=False)
 
     is_active = models.BooleanField(default=True)
     # is_staff only grants access to Django's own /django-admin/ site, never to the API.

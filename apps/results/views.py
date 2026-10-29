@@ -22,7 +22,7 @@ from common.tabular import read_table, requested_format, table_response
 from common.exceptions import DomainError
 from common.permissions import RoleBasedPermission
 
-from . import marks_import, resits, services
+from . import marks_import, resits, services, signoff
 from .grading import plain
 from .models import CourseResult, GradingScheme, ResitSheet, ResultAmendment, ResultSheet, SheetStatus
 from .serializers import (
@@ -124,6 +124,7 @@ class ResultSheetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
             "summary": services.sheet_summary(rows, components),
             "events": ResultSheetEventSerializer(sheet.events.all(), many=True).data,
             "resit_sheet_id": ResitSheet.objects.filter(offering=sheet.offering).values_list("id", flat=True).first(),
+            "signoff_warnings": signoff.gaps(sheet, profile=profile),
             "permissions": {
                 "can_configure": sheet.is_editable and (assigned or user.role in (Role.ADMIN, Role.RESULTS_OFFICER)),
                 "can_enter_marks": sheet.is_editable and assigned and semester.result_entry_is_open(),
@@ -131,7 +132,8 @@ class ResultSheetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
                 "can_return": user.can_approve_results and sheet.status in (SheetStatus.SUBMITTED, SheetStatus.APPROVED),
                 "can_approve": user.can_approve_results and sheet.status == SheetStatus.SUBMITTED and not (
                     profile.approver_must_differ_from_submitter and sheet.submitted_by_id == user.pk),
-                "can_publish": user.can_publish_results and sheet.status == SheetStatus.APPROVED,
+                "can_publish": user.can_publish_results and sheet.status == SheetStatus.APPROVED and not (
+                    profile.publisher_must_differ_from_submitter and sheet.submitted_by_id == user.pk),
                 "can_open_resit": (user.role in resits.RESULTS_ROLES and sheet.status == SheetStatus.PUBLISHED
                                    and AcademicRegulation.load().resits_enabled
                                    and not ResitSheet.objects.filter(offering=sheet.offering).exists()),
@@ -396,6 +398,7 @@ class ResitSheetViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             "exam_components": exam_components,
             "grade_cap": str(regulation.resit_max_grade_point) if regulation.resit_max_grade_point is not None else None,
             "registration_open": registration_open,
+            "signoff_warnings": signoff.gaps(sheet, profile=profile),
             "permissions": {
                 "can_register": user.role in resits.RESULTS_ROLES and sheet.is_editable,
                 "can_enter_scores": sheet.is_editable and assigned,
@@ -403,7 +406,8 @@ class ResitSheetViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 "can_return": user.can_approve_results and sheet.status in (SheetStatus.SUBMITTED, SheetStatus.APPROVED),
                 "can_approve": user.can_approve_results and sheet.status == SheetStatus.SUBMITTED and not (
                     profile.approver_must_differ_from_submitter and sheet.submitted_by_id == user.pk),
-                "can_publish": user.can_publish_results and sheet.status == SheetStatus.APPROVED,
+                "can_publish": user.can_publish_results and sheet.status == SheetStatus.APPROVED and not (
+                    profile.publisher_must_differ_from_submitter and sheet.submitted_by_id == user.pk),
             },
         }
 

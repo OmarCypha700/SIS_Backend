@@ -2,7 +2,8 @@
 Server-generated PDF documents (registration slips, result slips, transcripts) with ReportLab.
 
 Every document carries the institution header, a generation timestamp, a reference and page
-numbers. They are marked as unofficial unless an institution adds its own verification process.
+numbers. Slips and downloaded records are marked unofficial. Official transcripts are issued
+through apps.transcripts: they carry a serial number, a verification QR code and a signature block.
 """
 import io
 
@@ -13,6 +14,8 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.graphics.barcode.qr import QrCodeWidget
+from reportlab.graphics.shapes import Drawing
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from apps.institutions.models import InstitutionProfile
@@ -84,12 +87,20 @@ def _data_table(header, rows, widths, align_right=(), footer=None):
     return table
 
 
-def _render(story, *, reference, footer_text=""):
+def _render(story, *, reference, footer_text="", watermark=""):
     buffer = io.BytesIO()
     generated = timezone.localtime().strftime("%d %b %Y %H:%M")
 
     def on_page(canvas, doc):
         canvas.saveState()
+        if watermark:
+            canvas.setFont("Helvetica-Bold", 64)
+            canvas.setFillColor(colors.Color(0.85, 0.85, 0.85, alpha=0.35))
+            canvas.translate(A4[0] / 2, A4[1] / 2)
+            canvas.rotate(40)
+            canvas.drawCentredString(0, 0, watermark)
+            canvas.rotate(-40)
+            canvas.translate(-A4[0] / 2, -A4[1] / 2)
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(colors.grey)
         text = f"Generated {generated} · Reference {reference}"
@@ -196,3 +207,86 @@ def transcript(record, *, title="Academic transcript", include_unpublished=False
         story.append(Paragraph("Includes results that are not yet published. For internal use only.", STYLE_SMALL))
     return _render(story, reference=f"TR-{record['student']['student_number']}",
                    footer_text="Unofficial copy" + (" – internal" if include_unpublished else ""))
+
+
+# --- Official transcripts ------------------------------------------------------
+
+def _qr(url, size=26 * mm):
+    widget = QrCodeWidget(url, barBorder=0)
+    x1, y1, x2, y2 = widget.getBounds()
+    drawing = Drawing(size, size, transform=[size / (x2 - x1), 0, 0, size / (y2 - y1), 0, 0])
+    drawing.add(widget)
+    return drawing
+
+
+def _private_image(field, width, height):
+    if not field:
+        return None
+    try:
+        return Image(field.path, width=width, height=height, kind="proportional")
+    except (OSError, ValueError, NotImplementedError):
+        return None
+
+
+def _attestation(profile, transcript):
+    """Signature and seal: the uploaded images, or blank spaces to sign and stamp by hand."""
+    digital = transcript.signing == "DIGITAL"
+    signature = _private_image(profile.transcript_signature, 45 * mm, 16 * mm) if digital else None
+    seal = _private_image(profile.transcript_seal, 30 * mm, 30 * mm) if digital else None
+    name = profile.transcript_signatory_name or ("" if digital else "." * 40)
+    left = [
+        signature or Spacer(1, 16 * mm),
+        Paragraph("_" * 42, STYLE_BODY),
+        Paragraph("Signature", STYLE_SMALL),
+        Paragraph(f"Name: {_escape(name)}", STYLE_BODY),
+        Paragraph(f"Title: {_escape(profile.transcript_signatory_title)}", STYLE_BODY),
+        Paragraph("Date: " + (timezone.localtime(transcript.issued_at).strftime("%d %B %Y") if digital
+                              else "." * 40), STYLE_BODY),
+    ]
+    stamp = seal or Table([[Paragraph("Official stamp / seal", ParagraphStyle(
+        "stamp", parent=STYLE_SMALL, alignment=TA_CENTER))]], colWidths=[40 * mm], rowHeights=[30 * mm],
+        style=TableStyle([("BOX", (0, 0), (-1, -1), 0.6, colors.grey), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                          ("LINESTYLE", (0, 0), (-1, -1), 0.6)]))
+    table = Table([[left, stamp]], colWidths=[110 * mm, 70 * mm])
+    table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("ALIGN", (1, 0), (1, 0), "CENTER")]))
+    return table
+
+
+def official_transcript(transcript, *, verify_url, copy_number=1):
+    profile = InstitutionProfile.load()
+    record = transcript.snapshot
+    title = "Official academic transcript" + (" (interim)" if transcript.is_interim else "")
+    story = _header(profile, title)
+    issued = timezone.localtime(transcript.issued_at).strftime("%d %B %Y")
+    story.append(_details(_student_pairs(record) + [("Serial number", transcript.serial), ("Date of issue", issued)]))
+    if transcript.is_interim:
+        story += [Spacer(1, 2 * mm), Paragraph(
+            f"<b>Interim transcript.</b> {_escape(transcript.interim_reason)}. It lists published results up to the "
+            "date of issue.", STYLE_BODY)]
+    for semester in record["semesters"]:
+        story.append(KeepTogether([
+            Paragraph(f"{_escape(semester['academic_year'])} · {_escape(semester['semester'])} "
+                      f"<font color='grey'>(CGPA {_escape(semester['cgpa'] or '—')})</font>", STYLE_H2),
+            _semester_table(semester),
+        ]))
+    summary = record["summary"]
+    story += [Spacer(1, 4 * mm), Paragraph(
+        f"Credits attempted {summary['credits_attempted']} · credits earned {summary['credits_earned']}"
+        + (f" of {summary['required_credits']} required" if summary.get("required_credits") else "")
+        + f" · cumulative GPA <b>{_escape(summary['cgpa'] or '—')}</b>", STYLE_BODY)]
+
+    verify_text = Paragraph(
+        "<b>Verify this transcript</b><br/>Scan the code or visit<br/>"
+        f"<font size=8>{_escape(verify_url.rsplit('/', 1)[0])}</font><br/>"
+        f"and enter <b>{_escape(transcript.display_code)}</b>.<br/>"
+        "<font color='grey' size=7>The verification page shows whether this transcript is valid or has been "
+        "revoked. Any alteration makes this document invalid.</font>", STYLE_BODY)
+    closing = [Spacer(1, 8 * mm), _attestation(profile, transcript), Spacer(1, 6 * mm),
+               Table([[_qr(verify_url), verify_text]], colWidths=[32 * mm, 148 * mm],
+                     style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))]
+    if profile.transcript_footer:
+        closing += [Spacer(1, 3 * mm), Paragraph(_escape(profile.transcript_footer), STYLE_SMALL)]
+    story.append(KeepTogether(closing))
+    footer = "Official transcript" + (f" · Reprint, copy {copy_number}" if copy_number > 1 else "")
+    return _render(story, reference=transcript.serial, footer_text=footer,
+                   watermark="INTERIM" if transcript.is_interim else "")

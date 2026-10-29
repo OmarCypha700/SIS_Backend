@@ -1,13 +1,19 @@
-from django.http import HttpResponse, HttpResponseNotModified
+import mimetypes
+import os
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseNotModified
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role
 from apps.audit.services import diff, log_action, snapshot
+from common.exceptions import DomainError
 from common.permissions import RoleBasedPermission
 
 from . import app_icon
@@ -49,6 +55,71 @@ class AppIconView(APIView):
         response["ETag"] = tag
         response["Cache-Control"] = "public, max-age=86400"
         return response
+
+
+class TranscriptImageView(APIView):
+    """
+    The signature and seal printed on official transcripts. Stored privately (never under /media/),
+    so only administrators can see, replace or remove them here.
+    """
+
+    permission_classes = [RoleBasedPermission]
+    read_roles = (Role.ADMIN,)
+    write_roles = (Role.ADMIN,)
+    parser_classes = [MultiPartParser, FormParser]
+    FIELDS = {"signature": "transcript_signature", "seal": "transcript_seal"}
+
+    def _field(self, kind):
+        if kind not in self.FIELDS:
+            raise Http404
+        return self.FIELDS[kind]
+
+    @extend_schema(responses={(200, "image/*"): OpenApiTypes.BINARY})
+    def get(self, request, kind):
+        image = getattr(InstitutionProfile.load(), self._field(kind))
+        if not image:
+            raise Http404
+        try:
+            handle = image.open("rb")
+        except FileNotFoundError:
+            raise Http404 from None
+        content_type = mimetypes.guess_type(image.name)[0] or "application/octet-stream"
+        response = FileResponse(handle, content_type=content_type)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @extend_schema(request={"multipart/form-data": {"type": "object", "properties": {"file": {"type": "string",
+                                                                                        "format": "binary"}}}},
+                   responses={204: None})
+    def put(self, request, kind):
+        field = self._field(kind)
+        upload = request.FILES.get("file")
+        if upload is None:
+            raise DomainError("Choose an image file.", code="file_required")
+        profile = InstitutionProfile.load()
+        for validator in profile._meta.get_field(field).validators:
+            try:
+                validator(upload)
+            except DjangoValidationError as exc:
+                raise DomainError(" ".join(exc.messages), code="invalid_file") from None
+        old = getattr(profile, field)
+        if old:
+            old.delete(save=False)
+        getattr(profile, field).save(f"{kind}{os.path.splitext(upload.name)[1].lower()}", upload, save=True)
+        log_action(f"institution.transcript_{kind}_uploaded", actor=request.user, instance=profile,
+                   summary=f"Uploaded the transcript {kind} image")
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(responses={204: None})
+    def delete(self, request, kind):
+        field = self._field(kind)
+        profile = InstitutionProfile.load()
+        image = getattr(profile, field)
+        if image:
+            image.delete(save=True)
+            log_action(f"institution.transcript_{kind}_removed", actor=request.user, instance=profile,
+                       summary=f"Removed the transcript {kind} image")
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class InstitutionSettingsView(APIView):

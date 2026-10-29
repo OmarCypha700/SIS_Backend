@@ -9,6 +9,7 @@ from apps.academics.models import CourseOffering, Semester
 from apps.accounts.models import Role
 from apps.audit.models import AuditLog
 from apps.registration.models import CourseRegistration, RegistrationStatus, SemesterRegistration
+from apps.results import signoff
 from apps.results.models import AmendmentStatus, ResultAmendment, ResultSheet, SheetStatus, StudentMark
 from apps.results.services import build_academic_record
 from apps.students.models import StatusPolicy, Student, StudentStatus
@@ -63,6 +64,7 @@ def _registry_dashboard(user, semester):
         "offerings": offerings,
         "results": _sheet_counts(),
         "pending_amendments": ResultAmendment.objects.filter(status=AmendmentStatus.PENDING).count(),
+        "signoff_blocked": signoff.blocked_sheets(),
     }
     if user.role == Role.ADMIN:
         data["recent_activity"] = [
@@ -82,6 +84,7 @@ def _results_officer_dashboard(user, semester):
         "results": _sheet_counts(),
         "semester_results": _sheet_counts(ResultSheet.objects.filter(offering__semester=semester)) if semester else None,
         "pending_amendments": ResultAmendment.objects.filter(status=AmendmentStatus.PENDING).count(),
+        "signoff_blocked": signoff.blocked_sheets(),
         "awaiting_review": [{"id": s.id, "course_code": s.offering.course.code, "course_title": s.offering.course.title,
                              "submitted_by": s.submitted_by.get_full_name() if s.submitted_by else None,
                              "submitted_at": s.submitted_at} for s in awaiting],

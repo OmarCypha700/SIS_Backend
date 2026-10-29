@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 
 from common.models import TimeStampedModel
-from common.validators import image_extension_validator, validate_image_size
+from common.storage import private_storage
 
 
 class StudentStatus(models.TextChoices):
@@ -85,9 +85,9 @@ class Student(TimeStampedModel):
     current_level = models.ForeignKey("academics.Level", on_delete=models.PROTECT, related_name="students")
     status = models.CharField(max_length=20, choices=StudentStatus.choices, default=StudentStatus.ACTIVE)
     academic_standing = models.CharField(max_length=12, choices=AcademicStanding.choices, default=AcademicStanding.GOOD)
-    photo = models.ImageField(
-        upload_to="students/photos/", blank=True, validators=[image_extension_validator, validate_image_size]
-    )
+    # Private files, re-encoded as WebP by apps/students/photos.py and served through the API only.
+    photo = models.ImageField(upload_to="students/photos/", storage=private_storage, blank=True)
+    photo_thumbnail = models.ImageField(upload_to="students/photos/", storage=private_storage, blank=True)
     is_archived = models.BooleanField(default=False)
 
     class Meta:

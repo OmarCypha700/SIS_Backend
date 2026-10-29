@@ -6,6 +6,7 @@ from apps.academics.models import Level, Programme
 from common.bulk import BulkIdsField
 
 from .models import Gender, Student, StudentProgrammeHistory, StudentStatus
+from .photos import photo_url
 
 
 def _validate_placement(programme, level):
@@ -13,7 +14,20 @@ def _validate_placement(programme, level):
         raise serializers.ValidationError({"current_level": f"{level} is not a level of {programme.code}."})
 
 
-class StudentSerializer(serializers.ModelSerializer):
+class PhotoUrlsMixin(serializers.Serializer):
+    """Versioned API addresses of the student's photo; None when there is no photo."""
+
+    photo_url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
+
+    def get_photo_url(self, obj) -> str | None:
+        return photo_url(obj)
+
+    def get_thumbnail_url(self, obj) -> str | None:
+        return photo_url(obj, "thumb")
+
+
+class StudentSerializer(PhotoUrlsMixin, serializers.ModelSerializer):
     """Full record for registry staff."""
 
     full_name = serializers.CharField(read_only=True)
@@ -33,8 +47,8 @@ class StudentSerializer(serializers.ModelSerializer):
             "gender", "email", "phone", "residential_address", "emergency_contact_name", "emergency_contact_phone",
             "emergency_contact_relationship", "admission_date", "admission_year", "entry_academic_year",
             "programme", "programme_code", "programme_name", "current_level", "level_name", "status",
-            "status_display", "academic_standing", "photo", "is_archived", "is_active", "password", "created_at",
-            "updated_at",
+            "status_display", "academic_standing", "photo_url", "thumbnail_url", "is_archived", "is_active",
+            "password", "created_at", "updated_at",
         ]
         read_only_fields = ["is_archived", "academic_standing", "created_at", "updated_at"]
 
@@ -76,7 +90,7 @@ class StudentSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class StudentSummarySerializer(serializers.ModelSerializer):
+class StudentSummarySerializer(PhotoUrlsMixin, serializers.ModelSerializer):
     """Limited view for lecturers and results officers: no contact or personal details."""
 
     full_name = serializers.CharField(read_only=True)
@@ -86,7 +100,7 @@ class StudentSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
         fields = ["id", "student_number", "full_name", "first_name", "last_name", "email", "programme_code",
-                  "level_name", "status", "photo"]
+                  "level_name", "status", "photo_url", "thumbnail_url"]
         read_only_fields = fields
 
 
@@ -94,7 +108,7 @@ SELF_EDITABLE_FIELDS = {"phone", "residential_address", "emergency_contact_name"
                         "emergency_contact_relationship"}
 
 
-class StudentSelfSerializer(serializers.ModelSerializer):
+class StudentSelfSerializer(PhotoUrlsMixin, serializers.ModelSerializer):
     """A student's own record; only contact details are editable."""
 
     full_name = serializers.CharField(read_only=True)
@@ -109,7 +123,7 @@ class StudentSelfSerializer(serializers.ModelSerializer):
             "id", "student_number", "first_name", "middle_name", "last_name", "full_name", "date_of_birth",
             "gender", "email", "phone", "residential_address", "emergency_contact_name", "emergency_contact_phone",
             "emergency_contact_relationship", "admission_year", "programme_code", "programme_name", "level_name",
-            "status", "status_display", "photo",
+            "status", "status_display", "photo_url", "thumbnail_url",
         ]
         read_only_fields = [f for f in fields if f not in SELF_EDITABLE_FIELDS]
 

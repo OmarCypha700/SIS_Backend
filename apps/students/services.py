@@ -126,6 +126,9 @@ def delete_in_error(student, *, reason, actor):
     summary = {"student_number": student.student_number, "name": student.full_name, "email": student.email,
                "programme": student.programme.code, "admission_year": student.admission_year}
     entity_id, user = student.pk, student.user
+    from .photos import delete_files_for
+
+    delete_files_for(student)
     delete_or_explain(student)
     delete_or_explain(user)
     log_action("student.deleted", actor=actor, entity_type="students.student", entity_id=str(entity_id), reason=reason,

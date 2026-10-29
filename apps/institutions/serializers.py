@@ -3,6 +3,7 @@ from rest_framework import serializers
 from common.serializers import ModelCleanMixin
 
 from .models import AcademicRegulation, InstitutionProfile
+from .services import render_format
 
 BRANDING_FIELDS = ["name", "short_name", "motto", "logo", "primary_color", "country"]
 
@@ -16,10 +17,29 @@ class InstitutionBrandingSerializer(serializers.ModelSerializer):
 
 
 class InstitutionProfileSerializer(serializers.ModelSerializer):
+    # The signature and seal are private files, managed through /institution/transcript-images/.
+    has_transcript_signature = serializers.SerializerMethodField()
+    has_transcript_seal = serializers.SerializerMethodField()
+
     class Meta:
         model = InstitutionProfile
-        exclude = ["id"]
+        exclude = ["id", "transcript_signature", "transcript_seal"]
         read_only_fields = ["created_at", "updated_at"]
+
+    def get_has_transcript_signature(self, obj) -> bool:
+        return bool(obj.transcript_signature)
+
+    def get_has_transcript_seal(self, obj) -> bool:
+        return bool(obj.transcript_seal)
+
+    def validate_transcript_serial_format(self, value):
+        if "{SEQ" not in value:
+            raise serializers.ValidationError("The format must include a {SEQ} token, e.g. {SEQ:06}.")
+        try:
+            render_format(value, short="X", year=2026, programme="P", seq=1)
+        except (KeyError, ValueError, IndexError) as exc:
+            raise serializers.ValidationError("Unknown token in format. Use {SHORT}, {YEAR}, {PROG} and {SEQ}.") from exc
+        return value
 
     def validate_student_number_format(self, value):
         if "{SEQ" not in value:

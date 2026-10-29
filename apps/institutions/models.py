@@ -3,6 +3,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator, RegexVa
 from django.db import models
 
 from common.models import TimeStampedModel
+from common.storage import private_storage
 from common.validators import image_extension_validator, validate_image_size
 
 hex_colour = RegexValidator(r"^#[0-9a-fA-F]{6}$", "Use a hex colour such as #1d4ed8.")
@@ -42,8 +43,8 @@ class InstitutionProfile(TimeStampedModel):
     )
     student_number_format = models.CharField(
         max_length=60, default="{SHORT}/{YEAR}/{SEQ:04}",
-        help_text="Tokens: {SHORT} institution short name, {YEAR} admission year, "
-                  "{PROG} programme code, {SEQ:04} zero-padded sequence.",
+        help_text="Tokens: {SHORT} institution short name, {YEAR} admission year (2026) or {YEAR:02} its last "
+                  "two digits (26), {PROG} programme code, {SEQ:04} zero-padded sequence.",
     )
 
     # Registration policy
@@ -60,6 +61,9 @@ class InstitutionProfile(TimeStampedModel):
         default=True, help_text="The person approving an amendment must differ from the requester."
     )
     approver_must_differ_from_submitter = models.BooleanField(default=True)
+    publisher_must_differ_from_submitter = models.BooleanField(
+        default=False, help_text="The person publishing results must differ from the person who submitted them.",
+    )
     cgpa_retake_policy = models.CharField(
         max_length=10, choices=CgpaRetakePolicy.choices, default=CgpaRetakePolicy.LATEST
     )
@@ -67,6 +71,26 @@ class InstitutionProfile(TimeStampedModel):
         default=2, validators=[MinValueValidator(1), MaxValueValidator(4)]
     )
     result_slip_footer = models.TextField(blank=True)
+
+    # Official transcripts
+    transcript_signatory_name = models.CharField(max_length=150, blank=True,
+                                                 help_text="Printed under the signature line, e.g. the Registrar's name")
+    transcript_signatory_title = models.CharField(max_length=100, default="Registrar")
+    transcript_serial_format = models.CharField(
+        max_length=60, default="{SHORT}/TR/{YEAR}/{SEQ:06}",
+        help_text="Tokens: {SHORT} short name, {YEAR} year of issue (or {YEAR:02} for 26), {SEQ:06} sequence "
+                  "padded to 6 digits.",
+    )
+    transcript_footer = models.TextField(blank=True, help_text="Extra line printed at the end of official transcripts")
+    # Kept outside the public media folder: anyone could otherwise download and reuse them.
+    transcript_signature = models.ImageField(
+        upload_to="transcripts/", storage=private_storage, blank=True,
+        validators=[image_extension_validator, validate_image_size],
+    )
+    transcript_seal = models.ImageField(
+        upload_to="transcripts/", storage=private_storage, blank=True,
+        validators=[image_extension_validator, validate_image_size],
+    )
 
     class Meta:
         verbose_name = "institution profile"

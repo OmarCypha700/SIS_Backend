@@ -232,6 +232,8 @@ def publish(sheet, *, actor, comment=""):
         raise forbidden("You are not authorised to publish results.")
     if sheet.status != SheetStatus.APPROVED:
         raise DomainError("Only approved resits can be published.", code="invalid_transition", status_code=409)
+    if InstitutionProfile.load().publisher_must_differ_from_submitter and sheet.submitted_by_id == actor.pk:
+        raise forbidden("Resit results must be published by someone other than the person who submitted them.")
     for entry in sheet.entries.select_related("course_result__sheet__grading_scheme", "course_result__offering",
                                               "course_result__student"):
         if entry.status == ResitEntryStatus.ELIGIBLE:

@@ -3,8 +3,26 @@ from django.db import transaction
 from .models import InstitutionProfile, StudentNumberSequence
 
 
+class Year(int):
+    """
+    A year token whose width keeps the last digits: {YEAR} gives 2026, {YEAR:02} gives 26 and
+    {YEAR:2} gives 26 (2005 gives 05). Other format specs behave as for ordinary numbers.
+    """
+
+    def __format__(self, spec):
+        if spec.isdigit():
+            width = int(spec)
+            return str(int(self) % 10 ** width).zfill(width)
+        return format(int(self), spec)
+
+
+def render_format(fmt, *, short, year, programme="", seq=1):
+    """Render a numbering format: {SHORT}, {YEAR} / {YEAR:02}, {PROG} and {SEQ:04}."""
+    return fmt.format(SHORT=short, YEAR=Year(year), PROG=programme, SEQ=seq)
+
+
 def render_student_number(fmt, *, short, year, programme, seq):
-    return fmt.format(SHORT=short, YEAR=year, PROG=programme, SEQ=seq)
+    return render_format(fmt, short=short, year=year, programme=programme, seq=seq)
 
 
 @transaction.atomic

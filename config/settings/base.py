@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "apps.results",
     "apps.progression",
     "apps.notifications",
+    "apps.transcripts",
     "apps.dashboard",
 ]
 
@@ -111,7 +112,10 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
+# Not web-accessible: transcript signature and seal images. Keep it out of MEDIA_ROOT and back it up.
+PRIVATE_MEDIA_ROOT = Path(env("PRIVATE_MEDIA_ROOT", default=str(BASE_DIR / "private-media")))
 MAX_UPLOAD_IMAGE_BYTES = 2 * 1024 * 1024
+MAX_UPLOAD_PHOTO_BYTES = 10 * 1024 * 1024  # student photos straight from a camera; stored at ~30 KB
 MAX_UPLOAD_CSV_BYTES = 5 * 1024 * 1024  # CSV and Excel imports
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 
@@ -178,6 +182,7 @@ REST_FRAMEWORK = {
         "login": env("THROTTLE_LOGIN", default="10/min"),
         "password_reset": env("THROTTLE_PASSWORD_RESET", default="5/hour"),
         "password_change": "10/hour",
+        "transcript_verify": env("THROTTLE_TRANSCRIPT_VERIFY", default="30/min"),
     },
 }
 

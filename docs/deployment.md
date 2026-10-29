@@ -20,7 +20,7 @@ Copy `.env.example` to `.env` next to `manage.py` and set:
 | `DJANGO_DEBUG` | `True` | `False` |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | `<username>.pythonanywhere.com` |
 | `DATABASE_URL` | empty (SQLite) | `postgres://<user>:<password>@<host>:<port>/<db>` |
-| `FRONTEND_URL` | `http://localhost:3000` | `https://<frontend-domain>` (used in reset emails) |
+| `FRONTEND_URL` | `http://localhost:3000` | `https://<frontend-domain>` (used in reset emails and transcript QR codes) |
 | `CSRF_TRUSTED_ORIGINS` | `http://localhost:3000` | `https://<frontend-domain>` |
 | `CORS_ALLOWED_ORIGINS` | unused with the proxy | leave empty unless something calls the API cross-origin |
 | `EMAIL_BACKEND` | console backend | `anymail.backends.brevo.EmailBackend` |
@@ -30,6 +30,7 @@ Copy `.env.example` to `.env` next to `manage.py` and set:
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | empty (push off) | from `python manage.py generate_vapid_keys`; subject `mailto:<it contact>` |
 | `DJANGO_ADMIN_ENABLED` | `True` | `False` (enable temporarily if needed) |
 | `MEDIA_ROOT` | `./media` | e.g. `/home/<username>/sis-media` |
+| `PRIVATE_MEDIA_ROOT` | `./private-media` | e.g. `/home/<username>/sis-private` (student photos, transcript signature and seal; **do not** map it under Static files) |
 
 Never commit `.env`.
 
@@ -147,6 +148,11 @@ pg_restore --clean --if-exists --dbname="$DATABASE_URL" sis-YYYY-MM-DD.dump
 Also back up `MEDIA_ROOT` (logos, photos). Encrypt backups, store them off the server, restrict
 access, and test a restore at least once per semester. PythonAnywhere scheduled tasks can run the
 backup command daily.
+
+
+Also back up `PRIVATE_MEDIA_ROOT` (student photos and the transcript signature and seal); it is not inside
+`MEDIA_ROOT`. Photos are stored at about 30 KB each, so 1,000 students need roughly 35 MB including
+thumbnails. Keep an eye on the disk quota on small hosting plans.
 
 ## 8. A new institution (dedicated installation)
 

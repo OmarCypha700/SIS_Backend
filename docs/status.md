@@ -43,6 +43,16 @@
 * **Frontend** – responsive app shell (sidebar, mobile drawer, breadcrumbs, current period,
   account menu, light/dark), role-specific dashboards from live data, all screens listed in the
   brief, loading/empty/error states, confirmation dialogs with reasons for sensitive actions.
+* **Student photos** – shown on the student's record, dashboard and profile, in the student list and
+  on class lists. Uploaded one at a time or in bulk (files, a folder or a ZIP), with each file matched
+  to a student by its number while ignoring punctuation and case. Photos are converted to WebP,
+  cropped to passport shape and stored privately.
+* **Numbering** – `{YEAR:02}` gives the last two digits of the year (26 for 2026) in student number
+  and transcript serial formats.
+* **Official transcripts** – numbered transcripts with a QR verification code and a public
+  verification page, printed for hand signing and stamping or with an uploaded signature and seal.
+  Interim labelling, an issuance register with reprint and revoke, and a per-registrar permission
+  controlled by administrators. See [transcripts.md](transcripts.md).
 * **Bulk actions and deleting records created in error** – tick students or staff accounts to change
   status, deactivate, reactivate or (administrators only) delete them in one go. Deletion is limited to
   records that have never been used (no registrations, results, status changes, sign-in or audit
@@ -53,10 +63,13 @@
   within the free plan's daily limit by a reserve for security mail and daily digests. The app is
   installable, branded from Institution settings, and has an offline page. See
   [notifications.md](notifications.md).
-* **Quality** – 166 backend tests and 23 Playwright end-to-end journeys passing; ESLint clean;
+* **Quality** – 193 backend tests and 26 Playwright end-to-end journeys passing; ESLint clean;
   `check --deploy` clean apart from opt-in HSTS preload; `pip-audit` and `npm audit` clean.
 
 ## Known limitations
+
+* iPhone HEIC photos are not accepted; save them as JPG first. The photo crop is centred and
+  does not detect faces.
 
 * Push notifications, the app-icon badge and Brevo delivery have been tested with mocks and in desktop
   Chromium only. Check them on real Android and iPhone devices, and with your Brevo account, before

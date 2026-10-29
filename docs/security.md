@@ -30,7 +30,19 @@
 * Privileged result actions are separate per-user capabilities: approve results, publish results,
   request amendments, approve amendments. Approval and publication can be held by different people.
   By default the approver must differ from the submitter, and an amendment's approver must differ
-  from its requester.
+  from its requester. *Institution settings* can also require that the publisher differs from the
+  submitter. This is off by default: it suits institutions where registrars also teach.
+* When staff who approve or publish also teach, the submitter may be the only person holding the
+  next permission (for example, the only results officer submits their own course). The system
+  then shows a "Sign-off cannot continue yet" warning on the sheet, notifies administrators, and
+  lists the sheet under *Sign-off needs attention* on the registry and results-officer
+  dashboards. Keep at least two people able to approve and two able to publish, for example the
+  Results Officer and the Vice-Principal (Academic) for approval.
+* Student photos are personal data. They are stored in `PRIVATE_MEDIA_ROOT`, never at a public
+  address, and served only through `/api/v1/students/<id>/photo/` to the student themself, registry
+  staff, results officers, and lecturers of courses the student is registered on. Uploads are
+  re-encoded as WebP, which removes hidden data such as GPS location and camera details. Only the
+  registry can add, replace or remove photos, and every change is audited.
 * Role and capability fields are never writable through self-service endpoints; changing your own
   role or deactivating yourself is refused. `is_staff` / `is_superuser` are not exposed by the API.
 * Django admin (`/django-admin/`) is for superusers only and disabled in production unless

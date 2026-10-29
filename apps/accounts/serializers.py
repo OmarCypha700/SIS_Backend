@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from common.bulk import BulkIdsField
 
-from .models import CAPABILITY_FIELDS, DEFAULT_CAPABILITIES, Role, User
+from .models import CAPABILITY_FIELDS, DEFAULT_CAPABILITIES, TRANSCRIPT_ISSUER_ROLES, Role, User
 
 
 class LoginSerializer(serializers.Serializer):
@@ -72,6 +72,8 @@ class CurrentUserSerializer(serializers.ModelSerializer):
 
     @extend_schema_field({"type": "object", "nullable": True})
     def get_student(self, user):
+        from apps.students.photos import photo_url
+
         if user.role != Role.STUDENT:
             return None
         profile = getattr(user, "student_profile", None)
@@ -84,6 +86,8 @@ class CurrentUserSerializer(serializers.ModelSerializer):
             "programme_code": profile.programme.code,
             "level": profile.current_level.name,
             "status": profile.status,
+            "photo_url": photo_url(profile),
+            "thumbnail_url": photo_url(profile, "thumb"),
         }
 
 
@@ -127,6 +131,12 @@ class UserSerializer(serializers.ModelSerializer):
             validate_new_password(password, candidate, field="password")
         elif "password" in attrs:
             raise serializers.ValidationError({"password": "Use the reset-password action to change passwords."})
+        role = attrs.get("role", getattr(self.instance, "role", None))
+        if attrs.get("can_issue_transcripts") and role not in TRANSCRIPT_ISSUER_ROLES:
+            raise serializers.ValidationError(
+                {"can_issue_transcripts": "Only administrators and registrars can issue official transcripts."})
+        if self.instance is not None and "role" in attrs and role not in TRANSCRIPT_ISSUER_ROLES:
+            attrs["can_issue_transcripts"] = False  # moving out of the registry removes the permission
         return attrs
 
     def create(self, validated_data):
