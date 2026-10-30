@@ -94,6 +94,27 @@ def test_office_alerts_go_to_the_current_holder_not_a_former_one(world, admin_us
     assert fresh(current).capacity_codes() == ["LECTURER", "ACTING_RESULTS_OFFICER"]
 
 
+def test_office_holders_my_courses_lists_only_assigned_courses_and_marks_stay_locked(world, admin_user):
+    officer = make_user(Role.LECTURER)
+    appoint(officer, Office.RESULTS_OFFICER, admin_user)
+    signed_in = client_for(officer)
+    assert signed_in.get("/api/v1/course-offerings/").data["count"] == len(world.offerings)  # oversight view
+    assert signed_in.get("/api/v1/course-offerings/?mine=true").data["count"] == 0  # "My courses"
+
+    sheet = submitted_by(world, world.lecturer)
+    sheet.status = SheetStatus.DRAFT
+    sheet.save(update_fields=["status"])
+    detail = signed_in.get(f"/api/v1/result-sheets/{sheet.pk}/").data
+    assert detail["permissions"]["can_enter_marks"] is False and detail["permissions"]["can_submit"] is False
+    reg = world.student.course_registrations.get(offering=sheet.offering)
+    marks = {"marks": [{"registration": reg.id, "component": detail["components"][0]["id"], "score": "10"}]}
+    assert signed_in.put(f"/api/v1/result-sheets/{sheet.pk}/marks/", marks, format="json").status_code == 403
+
+    world.offerings["CS105"].assignments.create(lecturer=officer)
+    mine = signed_in.get("/api/v1/course-offerings/?mine=true").data["results"]
+    assert [row["course_code"] for row in mine] == ["CS105"]
+
+
 def test_a_future_appointment_starts_on_its_date(world, admin_user):
     tutor = make_user(Role.LECTURER)
     appoint(tutor, Office.REGISTRAR, admin_user, starts_on=TODAY + datetime.timedelta(days=7))

@@ -165,10 +165,18 @@ class CourseOfferingFilter(django_filters.FilterSet):
     department = django_filters.NumberFilter(field_name="course__department")
     lecturer = django_filters.NumberFilter(field_name="assignments__lecturer", distinct=True)
     current = django_filters.BooleanFilter(field_name="semester__is_current")
+    # Only the courses the signed-in person is assigned to teach ("My courses"), even when an office
+    # they hold lets them see every course.
+    mine = django_filters.BooleanFilter(method="filter_mine")
 
     class Meta:
         model = CourseOffering
         fields = ["semester", "course", "status"]
+
+    def filter_mine(self, queryset, name, value):
+        if not value:
+            return queryset
+        return queryset.filter(assignments__lecturer=self.request.user).distinct()
 
 
 class CourseOfferingViewSet(AcademicViewSet):
