@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from apps.academics.models import Semester
 from apps.students.models import Student
+from common.bulk import BulkIdsField
 
 from .models import CourseRegistration, RegistrationEvent, SemesterRegistration
 
@@ -66,6 +67,21 @@ class AdminRegistrationSerializer(SubmitRegistrationSerializer):
     student = serializers.PrimaryKeyRelatedField(queryset=Student.objects.all())
     semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.all())
     reason = serializers.CharField(max_length=2000)
+
+
+class BulkRegistrationSerializer(serializers.Serializer):
+    semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.all())
+    students = serializers.ListField(child=serializers.IntegerField(min_value=1), min_length=1, max_length=50)
+    extra_offerings = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False, default=list,
+                                            max_length=40, help_text="Electives to add for everyone, if eligible.")
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    notify = serializers.BooleanField(required=False, default=True)
+
+
+class BulkReviewSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=["approve", "reject"])
+    ids = BulkIdsField()
+    reason = serializers.CharField(max_length=2000, help_text="Recorded as the review comment on each registration.")
 
 
 class ReviewSerializer(serializers.Serializer):

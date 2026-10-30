@@ -77,7 +77,13 @@
   their courses, office access starts and stops with the appointment, and every audit entry records
   the capacity the person acted in. Registrar and Results Officer accounts can be assigned courses.
   Administrators see open-ended appointments over a year old on their dashboard.
-* **Quality** – 228 backend tests and 27 Playwright end-to-end journeys passing; ESLint clean;
+* **Bulk registration** – the registry picks a semester, programme and level; each student gets their
+  own compulsory courses (including required retakes) plus any electives chosen for the group. A
+  preview runs every registration rule and saves nothing; confirming registers the students who pass
+  and lists the rest with the reason. Courses are only added, never dropped. Large classes are sent in
+  batches of 50 with a progress bar. Students are told in the app and by push (no email). Pending
+  registrations can be approved or rejected together from the Registrations page.
+* **Quality** – 235 backend tests and 28 Playwright end-to-end journeys passing; ESLint clean;
   `check --deploy` clean apart from opt-in HSTS preload; `pip-audit` and `npm audit` clean.
 
 ## Known limitations

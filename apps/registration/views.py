@@ -17,12 +17,12 @@ from common.tabular import requested_format, table_response
 from common.exceptions import DomainError
 from common.permissions import RoleBasedPermission
 
-from . import services
+from . import bulk, services
 from .models import (
     CourseRegistration, CourseRegistrationStatus, RegistrationEvent, RegistrationStatus, SemesterRegistration,
 )
 from .serializers import (
-    AdminRegistrationSerializer, ReviewSerializer, SemesterRegistrationDetailSerializer,
+    AdminRegistrationSerializer, BulkRegistrationSerializer, BulkReviewSerializer, ReviewSerializer, SemesterRegistrationDetailSerializer,
     SemesterRegistrationListSerializer, SubmitRegistrationSerializer,
 )
 
@@ -105,6 +105,10 @@ class RegistrationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         "options_for_student": REGISTRY,
         "admin_register": REGISTRY,
         "review": REGISTRY,
+        "bulk_cohort": REGISTRY,
+        "bulk_preview": REGISTRY,
+        "bulk_confirm": REGISTRY,
+        "bulk_review": REGISTRY,
         "export": REGISTRY,
         "not_registered": REGISTRY,
         "statistics": REGISTRY,
@@ -173,6 +177,53 @@ class RegistrationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
             reason=data["reason"],
         )
         return Response(SemesterRegistrationDetailSerializer(_detail_queryset().get(pk=registration.pk)).data)
+
+    @extend_schema(parameters=[OpenApiParameter("semester", str), OpenApiParameter("programme", int),
+                               OpenApiParameter("level", int)], responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["get"], url_path="bulk/cohort")
+    def bulk_cohort(self, request):
+        """Students of a programme and level who may register, and the offerings open to them."""
+        from apps.academics.models import Level, Programme
+
+        semester = _semester_from(request)
+        try:
+            programme = Programme.objects.get(pk=int(request.query_params.get("programme", "")))
+            level = Level.objects.get(pk=int(request.query_params.get("level", "")))
+        except (Programme.DoesNotExist, Level.DoesNotExist, ValueError):
+            raise DomainError("Choose a programme and level.", code="cohort_required") from None
+        return Response({"semester": {"id": semester.id, "name": str(semester)}, "batch_size": bulk.MAX_STUDENTS,
+                         **bulk.cohort(semester, programme, level)})
+
+    def _bulk(self, request, *, dry_run):
+        payload = BulkRegistrationSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        rows = bulk.run(data["semester"], data["students"], data["extra_offerings"], actor=request.user,
+                        reason=data.get("reason", ""), dry_run=dry_run, notify=data["notify"])
+        return Response({"results": rows})
+
+    @extend_schema(request=BulkRegistrationSerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"], url_path="bulk/preview")
+    def bulk_preview(self, request):
+        """What each student would be registered for, with any problems. Saves nothing."""
+        return self._bulk(request, dry_run=True)
+
+    @extend_schema(request=BulkRegistrationSerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"], url_path="bulk/confirm")
+    def bulk_confirm(self, request):
+        """Register each student whose courses pass every rule; others are reported and skipped."""
+        return self._bulk(request, dry_run=False)
+
+    @extend_schema(request=BulkReviewSerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"], url_path="bulk-review")
+    def bulk_review(self, request):
+        """Approve or reject several registrations awaiting approval."""
+        payload = BulkReviewSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        queryset = SemesterRegistration.objects.select_related("student")  # non-pending ones are skipped with why
+        return Response(bulk.review_many(queryset, data["ids"], approve=data["action"] == "approve",
+                                         actor=request.user, comment=data["reason"]))
 
     @extend_schema(request=ReviewSerializer, responses=SemesterRegistrationDetailSerializer)
     @action(detail=True, methods=["post"])

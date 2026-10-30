@@ -9,7 +9,7 @@ from apps.accounts.models import User
 from apps.results.models import ResitEntryStatus
 
 from .models import Kind
-from .services import lecturers_of, notify, registry_staff, users_with
+from .services import lecturers_of, notify, registry_staff, student_users, users_with
 
 
 def _course(offering):
@@ -157,6 +157,13 @@ def registration_reviewed(registration, actor):
     notify([registration.student.user], kind=Kind.REGISTRATION_REVIEWED, actor=actor,
            title=f"Your course registration was {outcome}",
            body=f"Semester: {registration.semester}.", link="/registration")
+
+
+def registered_by_registry(students, semester, actor):
+    """Bulk registration: in-app and push only, so a large cohort never uses the email allowance."""
+    notify(student_users(students), kind=Kind.REGISTRATION_REVIEWED, actor=actor, email=False,
+           title=f"You have been registered for {semester}",
+           body="The registry registered your courses. Check them on your registration page.", link="/registration")
 
 
 def lecturers_assigned(offering, lecturer_ids, actor):
