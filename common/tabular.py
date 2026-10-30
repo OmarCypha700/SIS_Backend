@@ -56,7 +56,7 @@ def table_response(filename_base, header, rows, file_format="csv", sheet_title="
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = sheet_title[:31]
-        sheet.append([str(h) for h in header])
+        sheet.append([safe_cell(str(h)) for h in header])
         for cell in sheet[1]:
             cell.font = Font(bold=True)
         widths = [len(str(h)) for h in header]
@@ -78,7 +78,7 @@ def table_response(filename_base, header, rows, file_format="csv", sheet_title="
     response["Content-Disposition"] = f'attachment; filename="{filename_base}.csv"'
     response.write("﻿")  # BOM so Excel opens UTF-8 CSV files correctly
     writer = csv.writer(response)
-    writer.writerow(header)
+    writer.writerow([safe_cell(str(h)) for h in header])
     for row in rows:
         writer.writerow([safe_cell(v) for v in row])
     return response
@@ -96,57 +96,66 @@ def _cell_text(value):
     return str(value).strip()
 
 
+MAX_COLUMNS = 100
+
+
 def read_table(uploaded_file, *, max_bytes, max_rows=5000):
     """
     Read an uploaded CSV or .xlsx file into a list of dicts keyed by lower-case header names.
-    Raises ValueError with a user-facing message.
+    Rows are read one at a time and reading stops as soon as a limit is passed, so a small file
+    that declares a huge sheet cannot exhaust memory. Raises ValueError with a user-facing message.
     """
     if uploaded_file.size > max_bytes:
         raise ValueError(f"File is too large (maximum {max_bytes // (1024 * 1024)} MB).")
     name = (uploaded_file.name or "").lower()
     raw = uploaded_file.read()
-    if name.endswith(".xlsx") or raw[:2] == b"PK":
-        header, rows = _read_xlsx(raw)
-    elif name.endswith(".xls"):
+    if name.endswith(".xls") and raw[:2] != b"PK":
         raise ValueError("Old .xls files are not supported. Save the file as .xlsx or .csv.")
-    else:
-        header, rows = _read_csv(raw)
-    if not header or not any(header):
+    too_many = ValueError(f"Import at most {max_rows} rows at a time.")
+    # Blank lines are skipped, but every line read counts towards this hard stop.
+    line_limit = max_rows * 2 + 50
+    rows = _iter_xlsx(raw) if name.endswith(".xlsx") or raw[:2] == b"PK" else _iter_csv(raw)
+    header, records = None, []
+    try:
+        for count, values in enumerate(rows, start=1):
+            if count > line_limit:
+                raise too_many
+            values = [_cell_text(v) for v in values[:MAX_COLUMNS]]
+            if not any(values):
+                continue  # skip blank lines (and empty rows above the header)
+            if header is None:
+                header = [h.lower() for h in values]
+                continue
+            records.append({key: (values[i] if i < len(values) else "") for i, key in enumerate(header) if key})
+            if len(records) > max_rows:
+                raise too_many
+    finally:
+        close = getattr(rows, "close", None)
+        if close:
+            close()
+    if not header:
         raise ValueError("The file has no header row.")
-    header = [h.strip().lower() for h in header]
-    records = []
-    for values in rows:
-        values = [_cell_text(v) for v in values]
-        if not any(values):
-            continue  # skip blank lines
-        records.append({key: (values[i] if i < len(values) else "") for i, key in enumerate(header) if key})
-        if len(records) > max_rows:
-            raise ValueError(f"Import at most {max_rows} rows at a time.")
     return records
 
 
-def _read_csv(raw):
+def _iter_csv(raw):
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise ValueError("CSV files must be saved as UTF-8.") from exc
-    reader = csv.reader(io.StringIO(text))
-    rows = list(reader)
-    if not rows:
-        return [], []
-    return rows[0], rows[1:]
+    yield from csv.reader(io.StringIO(text))
 
 
-def _read_xlsx(raw):
+def _iter_xlsx(raw):
     try:
         workbook = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
     except (InvalidFileException, KeyError, OSError, ValueError) as exc:
         raise ValueError("This is not a valid Excel (.xlsx) file.") from exc
-    sheet = workbook.worksheets[0]
-    rows = [list(row) for row in sheet.iter_rows(values_only=True)]
-    workbook.close()
-    while rows and not any(v not in (None, "") for v in rows[0]):
-        rows.pop(0)  # leading empty rows
-    if not rows:
-        return [], []
-    return [_cell_text(v) for v in rows[0]], rows[1:]
+    try:
+        sheet = workbook.worksheets[0]
+        # Ignore the sheet's declared size, which the file can set to anything.
+        sheet.reset_dimensions()
+        for row in sheet.iter_rows(values_only=True, max_col=MAX_COLUMNS):
+            yield list(row)
+    finally:
+        workbook.close()

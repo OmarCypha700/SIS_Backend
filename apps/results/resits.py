@@ -23,7 +23,8 @@ from common.exceptions import DomainError
 
 from . import grading
 from .models import (
-    CourseResult, ResitEntry, ResitEntryStatus, ResitSheet, ResultSheet, SheetStatus, StudentMark,
+    AmendmentStatus, CourseResult, ResitEntry, ResitEntryStatus, ResitSheet, ResultAmendment, ResultSheet,
+    SheetStatus, StudentMark,
 )
 from .services import _bands, forbidden, is_assigned_lecturer
 
@@ -64,6 +65,10 @@ def open_resit(offering, *, actor, registration_deadline=None):
     if regulation.resit_min_total is not None:
         failing = failing.filter(total_score__gte=regulation.resit_min_total)
     candidates = [r for r in failing if resits_used(r.student, offering.course_id) < regulation.max_resits_per_course]
+    waiting = ResultAmendment.objects.filter(course_result__in=candidates, status=AmendmentStatus.PENDING).count()
+    if waiting:
+        raise DomainError(f"{waiting} amendment(s) to these results are awaiting review. Approve or reject them "
+                          "before opening the resit.", code="amendments_pending", status_code=409)
     resit = ResitSheet.objects.create(offering=offering, registration_deadline=registration_deadline, opened_by=actor)
     ResitEntry.objects.bulk_create([
         ResitEntry(sheet=resit, course_result=r, original_total=r.total_score, original_grade=r.grade) for r in candidates

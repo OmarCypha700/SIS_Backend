@@ -9,14 +9,14 @@ from apps.accounts.models import Role
 from apps.audit.services import log_action
 from apps.institutions.models import AcademicRegulation, InstitutionProfile
 from apps.notifications import events as notify_events
-from apps.registration.models import CourseRegistration, CourseRegistrationStatus
+from apps.registration.models import CourseRegistration, CourseRegistrationStatus, RegistrationStatus
 from common.exceptions import DomainError
 
 from . import grading
 from .grading import plain
 from .models import (
-    AmendmentStatus, AssessmentComponent, CourseResult, GradingScheme, ResultAmendment, ResultSheet,
-    ResultSheetEvent, SheetStatus, StudentMark,
+    AmendmentStatus, AssessmentComponent, CourseResult, GradingScheme, ResitEntryStatus, ResultAmendment,
+    ResultSheet, ResultSheetEvent, SheetStatus, StudentMark,
 )
 
 HUNDRED = Decimal("100")
@@ -72,7 +72,9 @@ def _require_editable(sheet):
 
 
 def _active_registrations(offering):
-    return (CourseRegistration.objects.filter(offering=offering, status=CourseRegistrationStatus.ACTIVE)
+    """Students on the class list: active courses in an approved semester registration (not one awaiting approval)."""
+    return (CourseRegistration.objects.filter(offering=offering, status=CourseRegistrationStatus.ACTIVE,
+                                              semester_registration__status=RegistrationStatus.REGISTERED)
             .select_related("student").order_by("student__last_name", "student__first_name"))
 
 
@@ -478,6 +480,12 @@ def review_amendment(amendment, *, approve, actor, comment=""):
         notify_events.amendment_reviewed(amendment, actor)
         return amendment
 
+    # A resit replaces the result through its own workflow (and resit grades cannot be amended), so an
+    # amendment requested before the resit opened must not overwrite what the resit decides.
+    if result.is_resit or result.resit_entries.exclude(status=ResitEntryStatus.NOT_TAKEN).exists():
+        raise DomainError("A resit has been opened for this result since the amendment was requested. "
+                          "Reject this amendment; the resit decides the result.",
+                          code="superseded_by_resit", status_code=409)
     if _current_marks(result) != amendment.original_marks:
         raise DomainError("The marks changed after this amendment was requested. Request a new amendment.",
                           code="stale_amendment", status_code=409)

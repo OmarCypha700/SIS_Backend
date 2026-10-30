@@ -22,6 +22,13 @@ def has_role(user, *roles):
     return is_active_user(user) and user.role in roles
 
 
+class IsAdministrator(BasePermission):
+    """Signed-in, active administrators only (used for the API documentation pages)."""
+
+    def has_permission(self, request, view):
+        return is_active_user(request.user) and has_role(request.user, "ADMIN")
+
+
 class RoleBasedPermission(BasePermission):
     message = "You do not have permission to perform this action."
 

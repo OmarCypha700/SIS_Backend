@@ -13,11 +13,31 @@
 * Passwords use Django's PBKDF2 hasher and validators (minimum 10 characters, not common,
   not numeric-only, not similar to the user's details).
 * Sessions expire after 8 hours of inactivity (`SESSION_COOKIE_AGE`, sliding).
-* Rate limits: login 10/min, password reset 5/hour, password change 10/hour per client.
+* Rate limits: login 10/min, password reset 5/hour, password change 10/hour per client, plus
+  login 20/hour and password reset 3/hour per email address. The client address comes from
+  `X-Forwarded-For` only as far as `NUM_PROXIES` trusted proxies, so clients cannot choose it.
+* Password reset email is sent at most once per 15 minutes and 3 times a day per person, so repeated
+  requests cannot use up the shared daily email allowance.
 * Login failures return one generic message and are audited (attempted email only).
 * Password reset tokens are single-use and expire after 2 hours; the reset endpoint always
   returns the same response so it cannot be used to discover accounts.
-* Staff created by an administrator get a temporary password and are prompted to change it.
+* Imports can generate a random temporary password per person (12 characters from an unambiguous
+  set, about 70 bits), shown once for printing as sign-in slips or downloading as CSV, and never
+  stored or logged. An optional `password` column is checked against the same validators.
+* Anyone with a temporary password (import, or set by an administrator) must choose their own
+  before using the API: `PasswordChangeRequiredMiddleware` answers every other API request with
+  403 `password_change_required`, and the app shows only the change-password screen.
+* After sign-in the app only follows `?next=` to a path on its own origin.
+* Push subscriptions are accepted only for the browsers' push services (`PUSH_ALLOWED_HOSTS`),
+  at most 10 devices per person; delivery never follows redirects.
+* The password-reset email is sent after the response has gone out, so response time does not
+  reveal whether an account exists.
+* The API documentation (`/api/v1/docs/`, `/api/v1/schema/`) is for administrators only, and its
+  Swagger UI files come from a fixed release (`swagger-ui-dist@5.17.14`), never `@latest`.
+* Logos, transcript signatures and seals must be under 12 megapixels; app icons are drawn once per
+  branding change and cached, so anonymous icon requests never decode the logo.
+* Spreadsheet uploads are read row by row with hard limits on rows and columns, so a small file
+  that declares a huge sheet cannot exhaust memory. Export headers are escaped like cells.
 * Multi-factor authentication is not implemented yet (recommended next step for staff).
 
 ## Authorisation

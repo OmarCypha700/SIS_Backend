@@ -188,6 +188,7 @@ class StudentImportRowSerializer(serializers.Serializer):
     admission_year = serializers.IntegerField(min_value=1950, max_value=2100)
     admission_date = serializers.DateField(required=False, allow_null=True)
     status = serializers.ChoiceField(choices=StudentStatus.choices, required=False, default=StudentStatus.ACTIVE)
+    password = serializers.CharField(required=False, allow_blank=True, max_length=128, trim_whitespace=False)
 
     def to_internal_value(self, data):
         cleaned = {k: v for k, v in data.items() if not (v == "" and k in {"date_of_birth", "admission_date", "status"})}
@@ -209,5 +210,5 @@ class StudentImportRowSerializer(serializers.Serializer):
 
 IMPORT_COLUMNS = [
     "student_number", "first_name", "middle_name", "last_name", "email", "phone", "gender", "date_of_birth",
-    "programme_code", "level", "admission_year", "admission_date", "status",
+    "programme_code", "level", "admission_year", "admission_date", "status", "password",
 ]

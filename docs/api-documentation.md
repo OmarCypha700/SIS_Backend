@@ -1,6 +1,7 @@
 # API documentation
 
-Interactive documentation generated from the code (OpenAPI 3):
+Interactive documentation generated from the code (OpenAPI 3). Sign in as an administrator first;
+other users get 403.
 
 * Swagger UI: `/api/v1/docs/`
 * Schema (YAML/JSON): `/api/v1/schema/` — or offline: `python manage.py spectacular --file schema.yml`

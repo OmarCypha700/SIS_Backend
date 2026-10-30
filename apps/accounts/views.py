@@ -15,6 +15,8 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+
+from common.throttles import LoginEmailThrottle, PasswordResetEmailThrottle
 from rest_framework.views import APIView
 
 from apps.audit.services import diff, log_action, snapshot
@@ -55,7 +57,7 @@ class CsrfView(APIView):
 @method_decorator(csrf_protect, name="dispatch")
 class LoginView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ScopedRateThrottle, LoginEmailThrottle]
     throttle_scope = "login"
 
     @extend_schema(request=LoginSerializer, responses=CurrentUserSerializer)
@@ -115,7 +117,7 @@ class PasswordChangeView(APIView):
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ScopedRateThrottle, PasswordResetEmailThrottle]
     throttle_scope = "password_reset"
 
     @extend_schema(request=PasswordResetRequestSerializer, responses={200: None})
@@ -123,11 +125,13 @@ class PasswordResetRequestView(APIView):
         serializer = PasswordResetRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = User.objects.filter(email=serializer.validated_data["email"].lower(), is_active=True).first()
-        if user is not None:
-            notifications.send_security_email(user, "password_reset")
+        queued = notifications.request_password_reset_email(user) if user is not None else []
+        if queued:
             log_action("auth.password_reset_requested", actor=None, instance=user, summary="Password reset requested")
-        # Always the same response so the endpoint cannot be used to discover accounts.
-        return Response({"detail": "If an account exists for that email, a reset link has been sent."})
+        # Always the same response, and the email goes out after it, so neither the body nor the
+        # response time shows whether an account exists.
+        response = Response({"detail": "If an account exists for that email, a reset link has been sent."})
+        return notifications.send_after_response(response, queued)
 
 
 class PasswordResetConfirmView(APIView):
@@ -276,11 +280,14 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
     def import_confirm(self, request):
         rows = records_from_confirm(request, max_rows=2000)
         send = str(request.data.get("send_setup_emails", "true")).lower() != "false"
-        created = importing.import_staff(rows, actor=request.user, send_emails=send)
+        mode = request.data.get("password_mode") or None
+        created, credentials = importing.import_staff(rows, actor=request.user, send_emails=send, password_mode=mode)
+        emailed = (mode or ("email" if send else "none")) == "email"
         # Set-up emails count against the daily email allowance; any that did not fit wait in the queue.
-        waiting = notifications.pending_security_emails(created) if send else 0
-        return Response({"created": len(created), "emails_sent": send, "emails_waiting": waiting},
-                        status=status.HTTP_201_CREATED)
+        waiting = notifications.pending_security_emails(created) if emailed else 0
+        # Credentials are returned once for printing and never stored.
+        return Response({"created": len(created), "emails_sent": emailed, "emails_waiting": waiting,
+                         "credentials": credentials}, status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[OpenApiParameter("file_format", str)], responses={200: OpenApiTypes.BINARY})
     @action(detail=False, methods=["get"], url_path="import/template")

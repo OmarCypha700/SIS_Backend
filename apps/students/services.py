@@ -6,6 +6,7 @@ from apps.accounts.services import account_usage, delete_or_explain, require_rea
 from apps.audit.services import diff, log_action, snapshot
 from apps.institutions.services import next_student_number
 from apps.notifications import events as notify_events
+from common.credentials import generate_temporary_password, password_errors
 from common.exceptions import DomainError
 
 from .models import Student, StudentProgrammeHistory
@@ -182,6 +183,11 @@ def validate_import_rows(rows):
                 seen_numbers.setdefault(number, index)
             if (data["first_name"].lower(), data["last_name"].lower(), data.get("date_of_birth")) in possible_duplicates:
                 warnings.append("A student with the same name and date of birth already exists.")
+            if data.get("password"):
+                problems = password_errors(data["password"], email=email, first_name=data["first_name"],
+                                           last_name=data["last_name"])
+                if problems:
+                    errors.setdefault("password", []).extend(problems)
         results.append({
             "row": index,
             "input": raw,
@@ -194,20 +200,40 @@ def validate_import_rows(rows):
 
 
 @transaction.atomic
-def import_students(rows, *, actor):
+def import_students(rows, *, actor, password_mode="none"):
+    """
+    password_mode: "generate" gives each new student a random temporary password, returned once
+    for printing; "column" uses the file's password column; "none" leaves accounts without a
+    password (students then use Forgot password). Temporary passwords must be changed at first sign-in.
+    Returns (students, credentials); credentials are never stored or logged.
+    """
+    if password_mode not in ("generate", "column", "none"):
+        raise DomainError("Unknown password option.", code="invalid")
     results = validate_import_rows(rows)
+    if password_mode == "column":
+        for r in results:
+            if r["data"] and not r["data"].get("password"):
+                r["errors"].setdefault("password", []).append("A password is required in this column.")
+                r["valid"] = False
     invalid = [r for r in results if not r["valid"]]
     if invalid:
         raise DomainError(
             f"{len(invalid)} row(s) have errors. Nothing was imported.", code="import_invalid",
             errors=[{"row": r["row"], "errors": r["errors"]} for r in invalid],
         )
-    created = []
+    created, credentials = [], []
     for result in results:
         data = dict(result["data"])
+        supplied = data.pop("password", "") or ""
         data["programme"] = data.pop("programme_code")
         data["current_level"] = data.pop("level")
-        created.append(create_student(data, actor=actor))
+        password = {"generate": generate_temporary_password(), "column": supplied}.get(password_mode)
+        student = create_student(data, actor=actor, password=password)
+        created.append(student)
+        if password:
+            credentials.append({"name": student.full_name, "identifier": student.student_number,
+                                "email": student.email, "password": password})
     log_action("student.imported", actor=actor, entity_type="students.student",
-               summary=f"Imported {len(created)} students", metadata={"count": len(created)})
-    return created
+               summary=f"Imported {len(created)} students",
+               metadata={"count": len(created), "password_mode": password_mode})
+    return created, credentials

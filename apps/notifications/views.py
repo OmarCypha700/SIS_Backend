@@ -6,6 +6,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role
@@ -69,6 +70,8 @@ class PushPublicKeyView(APIView):
 
 class PushSubscribeView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "push"
 
     @extend_schema(request=PushSubscribeSerializer, responses={201: OpenApiTypes.OBJECT})
     def post(self, request):
@@ -84,6 +87,10 @@ class PushSubscribeView(APIView):
             defaults={"user": request.user, "p256dh": data["keys"]["p256dh"], "auth": data["keys"]["auth"],
                       "user_agent": request.headers.get("User-Agent", "")[:300], "failures": 0},
         )
+        # Keep the newest few devices per person; older ones stop receiving pushes.
+        stale = (PushSubscription.objects.filter(user=request.user).order_by("-created_at", "-pk")
+                 .values_list("pk", flat=True)[settings.PUSH_MAX_DEVICES_PER_USER:])
+        PushSubscription.objects.filter(pk__in=list(stale)).delete()
         return Response({"id": subscription.pk}, status=status.HTTP_201_CREATED)
 
 
@@ -100,6 +107,8 @@ class PushUnsubscribeView(APIView):
 
 class PushTestView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "push"
 
     @extend_schema(request=None, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):

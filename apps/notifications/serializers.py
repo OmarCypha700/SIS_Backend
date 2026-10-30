@@ -26,8 +26,12 @@ class PushSubscribeSerializer(serializers.Serializer):
     keys = PushKeysSerializer()
 
     def validate_endpoint(self, value):
+        from .delivery import push_host_allowed
+
         if not value.startswith("https://"):
             raise serializers.ValidationError("Push endpoints must use HTTPS.")
+        if not push_host_allowed(value):
+            raise serializers.ValidationError("This browser's push service is not supported.")
         return value
 
 

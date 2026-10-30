@@ -312,3 +312,55 @@ def test_progression_permissions(world, staff):
 def test_new_level_student_helper(world):
     student = make_student(world.programme, world.l200)
     assert progression.next_level(student) is None
+
+
+# --- amendments and resits on the same result (security audit) ---------------
+
+def _exam_amendment(world, failed_class, score="90"):
+    result = CourseResult.objects.get(student=world.student, offering=failed_class)
+    exam = failed_class.assessment_components.get(is_examination=True)
+    return results.request_amendment(result, new_marks={str(exam.id): score}, reason="Re-marked after appeal",
+                                     actor=world.lecturer)
+
+
+def test_resit_waits_for_pending_amendments(world, staff, failed_class):
+    regulation(resits_enabled=True)
+    amendment = _exam_amendment(world, failed_class)
+    with pytest.raises(Exception, match="awaiting review"):
+        resits.open_resit(failed_class, actor=staff.officer)
+    results.review_amendment(amendment, approve=False, actor=make_user(Role.ADMIN), comment="Use the resit")
+    assert resits.open_resit(failed_class, actor=staff.officer).entries.count() == 2
+
+
+def test_amendment_cannot_overwrite_a_resit(world, staff, failed_class):
+    regulation(resits_enabled=True)
+    amendment = _exam_amendment(world, failed_class)
+    # Opened despite the check (e.g. data from before it existed): approval must still refuse.
+    from apps.results.models import ResitSheet
+    sheet = ResitSheet.objects.create(offering=failed_class, opened_by=staff.officer)
+    result = amendment.course_result
+    ResitEntry.objects.create(sheet=sheet, course_result=result, original_total=result.total_score,
+                              original_grade=result.grade)
+    with pytest.raises(Exception, match="resit has been opened"):
+        results.review_amendment(amendment, approve=True, actor=make_user(Role.ADMIN))
+    assert CourseResult.objects.get(pk=amendment.course_result_id).grade == "F"
+
+
+def test_my_resits_respects_the_results_hold(world, staff, failed_class):
+    regulation(resits_enabled=True)
+    resits.open_resit(failed_class, actor=staff.officer)
+    client = client_for(world.student.user)
+    assert client.get("/api/v1/my-resits/").status_code == 200
+    world.student.status = "SUSPENDED"
+    world.student.save()
+    blocked = client.get("/api/v1/my-resits/")
+    assert blocked.status_code == 403 and blocked.data["code"] == "results_blocked"
+
+
+def test_courses_awaiting_approval_are_not_on_the_class_list(world, staff):
+    reg = register(world, world.student, world.semester, ["CS101", "MATH101"])
+    register(world, world.other_student, world.semester, ["CS101", "MATH101"])
+    reg.status = "PENDING"
+    reg.save()
+    students = [r.student for r in results._active_registrations(world.offerings["CS101"])]
+    assert students == [world.other_student]

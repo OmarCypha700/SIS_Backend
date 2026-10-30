@@ -312,12 +312,14 @@ class StudentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
         if len(rows) > 2000:
             raise serializers.ValidationError({"rows": "Import at most 2000 rows at a time."})
         rows = [{str(k): ("" if v is None else str(v)) for k, v in row.items()} for row in rows if isinstance(row, dict)]
-        created = services.import_students(rows, actor=request.user)
-        return Response({"created": len(created)}, status=status.HTTP_201_CREATED)
+        mode = str(request.data.get("password_mode") or "none")
+        created, credentials = services.import_students(rows, actor=request.user, password_mode=mode)
+        # Credentials are returned once for printing and never stored.
+        return Response({"created": len(created), "credentials": credentials}, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="import/template")
     def import_template(self, request):
         return table_response("student-import-template", IMPORT_COLUMNS, [
             ["", "Ama", "", "Mensah", "ama.mensah@example.com", "0240000000", "F", "2004-05-14", "PROG-CODE",
-             "Level 100", "2025", "2025-09-01", "ACTIVE"],
+             "Level 100", "2025", "2025-09-01", "ACTIVE", ""],
         ], requested_format(request), sheet_title="Students")

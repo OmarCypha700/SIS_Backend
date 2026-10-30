@@ -4,7 +4,7 @@ from django.db import models
 
 from common.models import TimeStampedModel
 from common.storage import private_storage
-from common.validators import image_extension_validator, validate_image_size
+from common.validators import image_extension_validator, validate_branding_image
 
 hex_colour = RegexValidator(r"^#[0-9a-fA-F]{6}$", "Use a hex colour such as #1d4ed8.")
 
@@ -26,7 +26,7 @@ class InstitutionProfile(TimeStampedModel):
     short_name = models.CharField(max_length=20, default="SIS")
     motto = models.CharField(max_length=200, blank=True)
     logo = models.ImageField(
-        upload_to="branding/", blank=True, validators=[image_extension_validator, validate_image_size]
+        upload_to="branding/", blank=True, validators=[image_extension_validator, validate_branding_image]
     )
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=40, blank=True)
@@ -85,11 +85,11 @@ class InstitutionProfile(TimeStampedModel):
     # Kept outside the public media folder: anyone could otherwise download and reuse them.
     transcript_signature = models.ImageField(
         upload_to="transcripts/", storage=private_storage, blank=True,
-        validators=[image_extension_validator, validate_image_size],
+        validators=[image_extension_validator, validate_branding_image],
     )
     transcript_seal = models.ImageField(
         upload_to="transcripts/", storage=private_storage, blank=True,
-        validators=[image_extension_validator, validate_image_size],
+        validators=[image_extension_validator, validate_branding_image],
     )
 
     class Meta:

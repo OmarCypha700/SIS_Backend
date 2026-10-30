@@ -10,6 +10,8 @@ import io
 
 from PIL import Image, ImageDraw, ImageFont
 
+from common.validators import MAX_BRANDING_PIXELS
+
 SIZES = (64, 96, 180, 192, 512)
 PURPOSES = ("any", "maskable", "badge")
 
@@ -55,6 +57,9 @@ def _logo(profile):
     try:
         with profile.logo.open("rb") as handle:
             logo = Image.open(handle)
+            if logo.width * logo.height > MAX_BRANDING_PIXELS:
+                return None  # uploaded before the size check existed: use the initials
+            logo.draft("RGBA", (1024, 1024))  # JPEG: decode at a reduced scale
             logo.load()
         return logo.convert("RGBA")
     except Exception:  # noqa: BLE001 - a missing or broken file falls back to initials

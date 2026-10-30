@@ -17,7 +17,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         now = timezone.now()
         recovered = delivery.recover_stale(now)
-        expired = delivery.expire_alerts(now)
+        expired = delivery.expire_alerts(now) + delivery.expire_resets(now)
         digests = services.build_digests()
         stats = delivery.drain()
         self.stdout.write(

@@ -51,6 +51,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "common.middleware.PasswordChangeRequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -149,7 +150,8 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@example.edu")
 # Brevo (production): EMAIL_BACKEND=anymail.backends.brevo.EmailBackend and BREVO_API_KEY.
-ANYMAIL = {"BREVO_API_KEY": env("BREVO_API_KEY", default="")}
+# A short timeout keeps a slow mail API from holding a web worker (and the browser) for 30 s.
+ANYMAIL = {"BREVO_API_KEY": env("BREVO_API_KEY", default=""), "REQUESTS_TIMEOUT": (3.05, 10)}
 # Daily sending allowance shared by every email this installation sends (Brevo free plan: 300).
 # Alerts may only use EMAIL_DAILY_LIMIT - EMAIL_SECURITY_RESERVE so password resets always get through.
 EMAIL_DAILY_LIMIT = env.int("EMAIL_DAILY_LIMIT", default=300)
@@ -159,10 +161,22 @@ EMAIL_SECURITY_RESERVE = env.int("EMAIL_SECURITY_RESERVE", default=60)
 VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", default="")
 VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="")
 VAPID_SUBJECT = env("VAPID_SUBJECT", default="")
+# Browsers' push services. Subscriptions pointing anywhere else are refused, so the server never
+# posts to an address a user chose. Entries starting with "." match any subdomain.
+PUSH_ALLOWED_HOSTS = env.list("PUSH_ALLOWED_HOSTS", default=[
+    "fcm.googleapis.com", "updates.push.services.mozilla.com", "push.services.mozilla.com",
+    ".push.apple.com", ".notify.windows.com", ".wns.windows.com",
+])
+PUSH_MAX_DEVICES_PER_USER = 10
 PASSWORD_RESET_TIMEOUT = 60 * 60 * 2
 
 # --- Cache (used by throttling) -------------------------------------------
-CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+# Set CACHE_LOCATION (a writable folder) in production so throttles are shared by every web worker.
+CACHE_LOCATION = env("CACHE_LOCATION", default="")
+CACHES = {"default": (
+    {"BACKEND": "django.core.cache.backends.filebased.FileBasedCache", "LOCATION": CACHE_LOCATION}
+    if CACHE_LOCATION else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
+)}
 
 # --- REST framework -------------------------------------------------------
 REST_FRAMEWORK = {
@@ -178,7 +192,13 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "common.exceptions.api_exception_handler",
+    # Proxies in front of Django that append to X-Forwarded-For (1 = PythonAnywhere's own; 2 when the
+    # frontend's rewrites forward requests). Without this, a client could pick its own throttle key.
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=1),
     "DEFAULT_THROTTLE_RATES": {
+        "login_email": env("THROTTLE_LOGIN_EMAIL", default="20/hour"),
+        "password_reset_email": env("THROTTLE_PASSWORD_RESET_EMAIL", default="3/hour"),
+        "push": "30/hour",
         "login": env("THROTTLE_LOGIN", default="10/min"),
         "password_reset": env("THROTTLE_PASSWORD_RESET", default="5/hour"),
         "password_change": "10/hour",
@@ -195,6 +215,11 @@ SPECTACULAR_SETTINGS = {
     ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # The docs page runs on the app's own origin (through the frontend proxy), so only
+    # administrators can open it and the Swagger UI files come from a fixed, never-changing release.
+    "SERVE_PERMISSIONS": ["common.permissions.IsAdministrator"],
+    "SWAGGER_UI_DIST": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14",
+    "SWAGGER_UI_FAVICON_HREF": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/favicon-32x32.png",
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/v1",
     "ENUM_NAME_OVERRIDES": {

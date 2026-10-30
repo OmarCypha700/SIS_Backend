@@ -63,7 +63,16 @@
   within the free plan's daily limit by a reserve for security mail and daily digests. The app is
   installable, branded from Institution settings, and has an offline page. See
   [notifications.md](notifications.md).
-* **Quality** – 193 backend tests and 26 Playwright end-to-end journeys passing; ESLint clean;
+* **Import passwords and audit fixes** – student and staff imports can generate temporary passwords
+  and print sign-in slips (no email needed), or take a password column; a temporary password must be
+  changed before anything else works. Fixes from the security audit: reset-email repeat limits,
+  per-email rate limits and trusted-proxy handling, push-service allowlist, streaming spreadsheet
+  reads, shorter in-request sending (fewer 502s) and a stricter post-login redirect. Also: an
+  amendment and a resit can no longer both change the same result, the student-status hold covers
+  resits, courses in a registration awaiting approval stay off class lists until it is approved,
+  the API docs are administrator-only with a pinned Swagger UI, branding images are size-capped and
+  app icons cached, and the reset email no longer affects response time.
+* **Quality** – 219 backend tests and 26 Playwright end-to-end journeys passing; ESLint clean;
   `check --deploy` clean apart from opt-in HSTS preload; `pip-audit` and `npm audit` clean.
 
 ## Known limitations
@@ -84,7 +93,6 @@
 * No multi-factor authentication yet.
 * Imports, exports and transcript generation run synchronously (fine for ~2,000 rows); there are no
   background workers.
-* Email delivery for password reset requires SMTP configuration.
 * Student photos are stored but not yet displayed or uploadable from the UI.
 * A grading-scheme change does not automatically recalculate existing sheets; raw marks are kept so
   an authorised recalculation feature can be added.

@@ -485,6 +485,10 @@ class MyResitsViewSet(viewsets.ViewSet):
         student = Student.objects.filter(user=request.user).first()
         if student is None:
             raise DomainError("No student record is linked to this account.", code="not_found", status_code=404)
+        # Resit entries show the original and resit grades, so the same hold as My results applies.
+        if not StatusPolicy.for_status(student.status).can_view_results:
+            raise DomainError("Result access is not available for your current academic status. "
+                              "Please contact the registry.", code="results_blocked", status_code=403)
         return student
 
     @extend_schema(responses=MyResitSerializer(many=True))

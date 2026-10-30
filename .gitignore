@@ -17,3 +17,4 @@ e2e.sqlite3
 .claude/
 .test-media/
 .test-private/
+skills-lock.json

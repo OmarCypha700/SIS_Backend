@@ -28,6 +28,10 @@ Copy `.env.example` to `.env` next to `manage.py` and set:
 | `DEFAULT_FROM_EMAIL` | any | a sender verified in Brevo, e.g. `SIS <no-reply@your-college.edu.gh>` |
 | `EMAIL_DAILY_LIMIT`, `EMAIL_SECURITY_RESERVE` | 300, 60 | Brevo free plan: 300 (lower it if you also send campaigns) |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | empty (push off) | from `python manage.py generate_vapid_keys`; subject `mailto:<it contact>` |
+| `NUM_PROXIES` | 1 | proxies that add to `X-Forwarded-For` in front of Django: 1 for PythonAnywhere alone, 2 when every request comes through the Vercel rewrites. Rate limits use the address this selects |
+| `CACHE_LOCATION` | empty (memory) | e.g. `/home/<username>/sis-cache`, so rate limits are shared by all web workers |
+| `THROTTLE_LOGIN_EMAIL`, `THROTTLE_PASSWORD_RESET_EMAIL` | 20/hour, 3/hour | per email address, whatever address the requests come from |
+| `PUSH_ALLOWED_HOSTS` | browser push services | only change to add a push service a new browser uses |
 | `DJANGO_ADMIN_ENABLED` | `True` | `False` (enable temporarily if needed) |
 | `MEDIA_ROOT` | `./media` | e.g. `/home/<username>/sis-media` |
 | `PRIVATE_MEDIA_ROOT` | `./private-media` | e.g. `/home/<username>/sis-private` (student photos, transcript signature and seal; **do not** map it under Static files) |
@@ -192,5 +196,6 @@ Read migration files before applying them to production; test on a copy of produ
 | Static admin files missing | Run `collectstatic`; check the `/static/` mapping |
 | Logo not shown | Check the `/media/` mapping and `MEDIA_ROOT` permissions |
 | "database is locked" on SQLite | Too many simultaneous writers: move to PostgreSQL |
-| Password reset email not received | Configure `EMAIL_*`; in development, emails print to the console |
+| Password reset email not received | Configure `EMAIL_*`; in development, emails print to the console. One reset email per person per 15 minutes and 3 a day; a link still waiting after 24 hours is dropped |
+| Occasional "502" in the browser console | The host stopped a slow request. Sending is limited per request (5 messages / about 6 s, mail API timeout 10 s) and the bell polls every 2 minutes; if 502s continue, check the error log for slow requests |
 | "No default grading scheme is configured" | Create a grading scheme and mark it default (Administration → Grading schemes) |

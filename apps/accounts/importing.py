@@ -10,16 +10,17 @@ from rest_framework import serializers
 
 from apps.audit.services import log_action
 from apps.notifications import services as notifications
+from common.credentials import generate_temporary_password, password_errors
 from common.exceptions import DomainError
 from common.importing import row_result, serializer_errors
 
 from .models import DEFAULT_CAPABILITIES, Role, User
 
-COLUMNS = ["email", "title", "first_name", "last_name", "phone", "staff_id", "role"]
+COLUMNS = ["email", "title", "first_name", "last_name", "phone", "staff_id", "role", "password"]
 REQUIRED = {"email", "first_name", "last_name", "role"}
 TEMPLATE_ROWS = [
-    ["k.asante@example.edu", "Dr.", "Kwame", "Asante", "0240000000", "STF-001", "LECTURER"],
-    ["e.owusu@example.edu", "Mrs.", "Efua", "Owusu", "", "STF-002", "RESULTS_OFFICER"],
+    ["k.asante@example.edu", "Dr.", "Kwame", "Asante", "0240000000", "STF-001", "LECTURER", ""],
+    ["e.owusu@example.edu", "Mrs.", "Efua", "Owusu", "", "STF-002", "RESULTS_OFFICER", ""],
 ]
 STAFF_ROLE_CHOICES = [(r.value, r.label) for r in Role if r != Role.STUDENT]
 _ROLE_ALIASES = {label.upper(): value for value, label in STAFF_ROLE_CHOICES} | {
@@ -36,6 +37,7 @@ class StaffRowSerializer(serializers.Serializer):
     phone = serializers.CharField(required=False, allow_blank=True, max_length=30)
     staff_id = serializers.CharField(required=False, allow_blank=True, max_length=40)
     role = serializers.ChoiceField(choices=STAFF_ROLE_CHOICES)
+    password = serializers.CharField(required=False, allow_blank=True, max_length=128, trim_whitespace=False)
 
     def to_internal_value(self, data):
         data = dict(data)
@@ -75,6 +77,11 @@ def validate_rows(rows):
                 if staff_id in seen_id:
                     errors.setdefault("staff_id", []).append(f"Duplicate of row {seen_id[staff_id]} in this file.")
                 seen_id.setdefault(staff_id, index)
+            if data.get("password"):
+                problems = password_errors(data["password"], email=data["email"], first_name=data["first_name"],
+                                           last_name=data["last_name"])
+                if problems:
+                    errors.setdefault("password", []).extend(problems)
             if data["role"] == Role.ADMIN:
                 warnings.append("This person will have full administrator access.")
         results.append(row_result(index, raw, data, errors, warnings))
@@ -82,24 +89,45 @@ def validate_rows(rows):
 
 
 @transaction.atomic
-def import_staff(rows, *, actor, send_emails=True):
+def import_staff(rows, *, actor, send_emails=True, password_mode=None):
+    """
+    password_mode: "generate" (random temporary passwords returned once for printing), "column"
+    (the file's password column), or "email" (password set-up links by email, the default when
+    send_emails is true). Temporary passwords must be changed at first sign-in.
+    Returns (users, credentials); credentials are never stored or logged.
+    """
+    mode = password_mode or ("email" if send_emails else "none")
+    if mode not in ("generate", "column", "email", "none"):
+        raise DomainError("Unknown password option.", code="invalid")
     results = validate_rows(rows)
+    if mode == "column":
+        for r in results:
+            if r["data"] and not r["data"].get("password"):
+                r["errors"].setdefault("password", []).append("A password is required in this column.")
+                r["valid"] = False
     invalid = [r for r in results if not r["valid"]]
     if invalid:
         raise DomainError(f"{len(invalid)} row(s) have errors. Nothing was imported.", code="import_invalid",
                           errors=[{"row": r["row"], "errors": r["errors"]} for r in invalid])
-    created = []
+    created, credentials = [], []
     for result in results:
         data = dict(result["data"])
+        supplied = data.pop("password", "") or ""
         data["staff_id"] = data.get("staff_id") or None
         for field, value in DEFAULT_CAPABILITIES.get(data["role"], {}).items():
             data.setdefault(field, value)
-        created.append(User.objects.create_user(password=None, **data))
+        password = {"generate": generate_temporary_password(), "column": supplied}.get(mode)
+        user = User.objects.create_user(password=password or None, must_change_password=bool(password), **data)
+        created.append(user)
+        if password:
+            credentials.append({"name": user.get_full_name(), "identifier": user.staff_id or "",
+                                "email": user.email, "password": password})
     log_action("user.imported", actor=actor, entity_type="accounts.user",
                summary=f"Imported {len(created)} staff accounts",
-               metadata={"emails": [u.email for u in created][:500], "roles": sorted({u.role for u in created})})
-    if send_emails:
+               metadata={"emails": [u.email for u in created][:500], "roles": sorted({u.role for u in created}),
+                         "password_mode": mode})
+    if mode == "email":
         # Queued after the rows exist and sent within the daily email allowance; a mail failure
         # never undoes the import. Links are generated when each email is actually sent.
         notifications.send_security_emails(created, "account_setup")
-    return created
+    return created, credentials

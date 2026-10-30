@@ -96,8 +96,10 @@ def test_nothing_is_sent_when_the_action_rolls_back(world, django_capture_on_com
     assert not Notification.objects.exists() and not OutgoingMessage.objects.exists() and not mail.outbox
 
 
-def test_alerts_stop_at_the_budget_but_password_resets_still_send(settings, api, django_capture_on_commit_callbacks):
+def test_alerts_stop_at_the_budget_but_password_resets_still_send(settings, api, monkeypatch,
+                                                                  django_capture_on_commit_callbacks):
     settings.EMAIL_DAILY_LIMIT, settings.EMAIL_SECURITY_RESERVE = 10, 3
+    monkeypatch.setattr(delivery, "IMMEDIATE_LIMIT", 20)
     officers = [make_user(Role.RESULTS_OFFICER) for _ in range(9)]
     with django_capture_on_commit_callbacks(execute=True):
         services.notify(officers, kind=Kind.TEST, title="Check this")

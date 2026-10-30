@@ -1,6 +1,7 @@
 import mimetypes
 import os
 
+from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseNotModified
 from drf_spectacular.types import OpenApiTypes
@@ -51,7 +52,13 @@ class AppIconView(APIView):
         tag = f'"{app_icon.etag(profile, size, purpose)}"'
         if request.headers.get("If-None-Match") == tag:
             return HttpResponseNotModified()
-        response = HttpResponse(app_icon.render(profile, size, purpose), content_type="image/png")
+        # Rendered once per branding version; anonymous requests never redraw it.
+        key = f"app-icon:{tag}"
+        png = cache.get(key)
+        if png is None:
+            png = app_icon.render(profile, size, purpose)
+            cache.set(key, png, timeout=7 * 24 * 60 * 60)
+        response = HttpResponse(png, content_type="image/png")
         response["ETag"] = tag
         response["Cache-Control"] = "public, max-age=86400"
         return response

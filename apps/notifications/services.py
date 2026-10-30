@@ -9,10 +9,12 @@ surrounding transaction rolls back.
 Messages never contain marks, grades or personal details: they appear on lock screens and in
 mailboxes. The link leads to the signed-in page.
 """
+import datetime
 from collections import defaultdict
 
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 
 from apps.accounts.models import Role, User
 from apps.institutions.models import InstitutionProfile
@@ -79,14 +81,49 @@ def send_security_email(user, template):
     return send_security_emails([user], template)[0]
 
 
-def send_security_emails(users, template):
+def send_security_emails(users, template, *, send_now=True):
     queued = OutgoingMessage.objects.bulk_create([
         OutgoingMessage(channel=Channel.EMAIL, category=Category.SECURITY, recipient=user, to=user.email,
                         subject=messages.render(template, user)[0], payload={"template": template})
         for user in users
     ])
-    _drain_after_commit([m.pk for m in queued])
+    if send_now:
+        _drain_after_commit([m.pk for m in queued])
     return queued
+
+
+def send_after_response(response, messages_):
+    """
+    Deliver queued messages once the response has been handed to the server, so the caller's
+    response time does not depend on whether there was anything to send.
+    """
+    ids = [m.pk for m in messages_]
+    if ids:
+        response._resource_closers.append(lambda: _safe_drain(ids))
+    return response
+
+
+RESET_REPEAT_WINDOW = datetime.timedelta(minutes=15)
+RESET_DAILY_CAP = 3
+
+
+def request_password_reset_email(user):
+    """
+    Queue a reset link unless one is already waiting or was sent in the last 15 minutes, or the
+    person has had 3 today. Repeated requests then cannot drain the shared daily email allowance.
+    Returns the queued messages (empty when none); the caller answers identically either way and
+    sends them after the response (see send_after_response).
+    """
+    now = timezone.now()
+    recent = OutgoingMessage.objects.filter(recipient=user, category=Category.SECURITY,
+                                            payload__template="password_reset")
+    if recent.filter(status__in=[MessageStatus.PENDING, MessageStatus.SENDING]).exists():
+        return []
+    if recent.filter(created_at__gte=now - RESET_REPEAT_WINDOW).exists():
+        return []
+    if recent.filter(created_at__gte=now - datetime.timedelta(days=1)).count() >= RESET_DAILY_CAP:
+        return []
+    return send_security_emails([user], "password_reset", send_now=False)
 
 
 def pending_security_emails(users):
@@ -102,7 +139,7 @@ def _drain_after_commit(ids):
 
 def _safe_drain(ids):
     try:
-        delivery.drain(ids=ids, max_items=delivery.IMMEDIATE_LIMIT, deadline_seconds=8)
+        delivery.drain(ids=ids, max_items=delivery.IMMEDIATE_LIMIT, deadline_seconds=delivery.IMMEDIATE_SECONDS)
     except Exception:  # noqa: BLE001 - the queue is retried later
         delivery.logger.exception("Immediate notification delivery failed")
 
