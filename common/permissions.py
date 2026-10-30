@@ -19,7 +19,8 @@ def is_active_user(user):
 
 
 def has_role(user, *roles):
-    return is_active_user(user) and user.role in roles
+    """The person's own role or an office they currently hold (see User.roles)."""
+    return is_active_user(user) and user.has_any_role(*roles)
 
 
 class IsAdministrator(BasePermission):
@@ -44,4 +45,4 @@ class RoleBasedPermission(BasePermission):
             roles = getattr(view, "read_roles", ())
         else:
             roles = getattr(view, "write_roles", ())
-        return user.role in roles
+        return user.has_any_role(*roles)

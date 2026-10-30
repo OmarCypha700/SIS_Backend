@@ -126,19 +126,19 @@ class ResultSheetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
             "resit_sheet_id": ResitSheet.objects.filter(offering=sheet.offering).values_list("id", flat=True).first(),
             "signoff_warnings": signoff.gaps(sheet, profile=profile),
             "permissions": {
-                "can_configure": sheet.is_editable and (assigned or user.role in (Role.ADMIN, Role.RESULTS_OFFICER)),
+                "can_configure": sheet.is_editable and (assigned or user.has_any_role(Role.ADMIN, Role.RESULTS_OFFICER)),
                 "can_enter_marks": sheet.is_editable and assigned and semester.result_entry_is_open(),
                 "can_submit": sheet.is_editable and assigned,
-                "can_return": user.can_approve_results and sheet.status in (SheetStatus.SUBMITTED, SheetStatus.APPROVED),
-                "can_approve": user.can_approve_results and sheet.status == SheetStatus.SUBMITTED and not (
+                "can_return": user.has_capability("can_approve_results") and sheet.status in (SheetStatus.SUBMITTED, SheetStatus.APPROVED),
+                "can_approve": user.has_capability("can_approve_results") and sheet.status == SheetStatus.SUBMITTED and not (
                     profile.approver_must_differ_from_submitter and sheet.submitted_by_id == user.pk),
-                "can_publish": user.can_publish_results and sheet.status == SheetStatus.APPROVED and not (
+                "can_publish": user.has_capability("can_publish_results") and sheet.status == SheetStatus.APPROVED and not (
                     profile.publisher_must_differ_from_submitter and sheet.submitted_by_id == user.pk),
-                "can_open_resit": (user.role in resits.RESULTS_ROLES and sheet.status == SheetStatus.PUBLISHED
+                "can_open_resit": (user.has_any_role(*resits.RESULTS_ROLES) and sheet.status == SheetStatus.PUBLISHED
                                    and AcademicRegulation.load().resits_enabled
                                    and not ResitSheet.objects.filter(offering=sheet.offering).exists()),
-                "can_request_amendment": user.can_request_amendments and sheet.status == SheetStatus.PUBLISHED and (
-                    assigned or user.role != Role.LECTURER),
+                "can_request_amendment": user.has_capability("can_request_amendments") and sheet.status == SheetStatus.PUBLISHED and (
+                    assigned or not user.teaches_only),
             },
         }
 
@@ -151,7 +151,7 @@ class ResultSheetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
     def for_offering(self, request, offering_id=None):
         """Open (creating if needed) the result sheet for a course offering."""
         offerings = CourseOffering.objects.all()
-        if request.user.role == Role.LECTURER:
+        if request.user.teaches_only:
             offerings = offerings.filter(assignments__lecturer=request.user)
         offering = offerings.filter(pk=offering_id).first()
         if offering is None:
@@ -257,7 +257,7 @@ class AmendmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
             "course_result__offering__semester__academic_year", "requested_by", "reviewed_by",
         )
         user = self.request.user
-        if getattr(user, "role", None) == Role.LECTURER:
+        if getattr(user, "teaches_only", False):
             queryset = queryset.filter(
                 Q(requested_by=user) | Q(course_result__offering__assignments__lecturer=user)).distinct()
         return queryset
@@ -268,7 +268,7 @@ class AmendmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
         payload.is_valid(raise_exception=True)
         data = payload.validated_data
         results = CourseResult.objects.all()
-        if request.user.role == Role.LECTURER:
+        if request.user.teaches_only:
             results = results.filter(offering__assignments__lecturer=request.user)
         result = results.filter(pk=data["course_result"]).first()
         if result is None:
@@ -400,13 +400,13 @@ class ResitSheetViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             "registration_open": registration_open,
             "signoff_warnings": signoff.gaps(sheet, profile=profile),
             "permissions": {
-                "can_register": user.role in resits.RESULTS_ROLES and sheet.is_editable,
+                "can_register": user.has_any_role(*resits.RESULTS_ROLES) and sheet.is_editable,
                 "can_enter_scores": sheet.is_editable and assigned,
                 "can_submit": sheet.is_editable and assigned,
-                "can_return": user.can_approve_results and sheet.status in (SheetStatus.SUBMITTED, SheetStatus.APPROVED),
-                "can_approve": user.can_approve_results and sheet.status == SheetStatus.SUBMITTED and not (
+                "can_return": user.has_capability("can_approve_results") and sheet.status in (SheetStatus.SUBMITTED, SheetStatus.APPROVED),
+                "can_approve": user.has_capability("can_approve_results") and sheet.status == SheetStatus.SUBMITTED and not (
                     profile.approver_must_differ_from_submitter and sheet.submitted_by_id == user.pk),
-                "can_publish": user.can_publish_results and sheet.status == SheetStatus.APPROVED and not (
+                "can_publish": user.has_capability("can_publish_results") and sheet.status == SheetStatus.APPROVED and not (
                     profile.publisher_must_differ_from_submitter and sheet.submitted_by_id == user.pk),
             },
         }

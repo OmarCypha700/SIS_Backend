@@ -5,6 +5,7 @@ from . import views
 
 router = DefaultRouter(trailing_slash=True)
 router.register("users", views.UserViewSet, basename="user")
+router.register("appointments", views.AppointmentViewSet, basename="appointment")
 
 urlpatterns = [
     path("auth/csrf/", views.CsrfView.as_view(), name="auth-csrf"),

@@ -21,8 +21,9 @@ STEPS = {
 
 
 def _holders():
-    staff = User.objects.filter(is_active=True).exclude(role=Role.STUDENT)
-    return {step: set(staff.filter(**{flag: True}).values_list("pk", flat=True)) for step, (flag, _, _) in STEPS.items()}
+    # Includes permissions that come with an office someone currently holds.
+    return {step: set(User.objects.with_capability(flag).values_list("pk", flat=True))
+            for step, (flag, _, _) in STEPS.items()}
 
 
 def _steps_ahead(status):

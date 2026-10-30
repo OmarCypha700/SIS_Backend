@@ -66,6 +66,7 @@ def log_action(action, *, actor=None, instance=None, entity_type=None, entity_id
     return AuditLog.objects.create(
         actor=actor,
         actor_email=getattr(actor, "email", "") or "",
+        actor_roles=" ".join(actor.capacity_codes()) if actor is not None else "",
         action=action,
         entity_type=entity_type or "",
         entity_id=str(entity_id or ""),

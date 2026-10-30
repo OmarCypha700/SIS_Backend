@@ -72,7 +72,12 @@
   resits, courses in a registration awaiting approval stay off class lists until it is approved,
   the API docs are administrator-only with a pinned Swagger UI, branding images are size-capped and
   app icons cached, and the reset email no longer affects response time.
-* **Quality** – 219 backend tests and 26 Playwright end-to-end journeys passing; ESLint clean;
+* **Appointments** – offices (Registrar, Results Officer, including acting holders) are held for a
+  period on top of a person's own role, so registrars and results officers who also teach keep
+  their courses, office access starts and stops with the appointment, and every audit entry records
+  the capacity the person acted in. Registrar and Results Officer accounts can be assigned courses.
+  Administrators see open-ended appointments over a year old on their dashboard.
+* **Quality** – 228 backend tests and 27 Playwright end-to-end journeys passing; ESLint clean;
   `check --deploy` clean apart from opt-in HSTS preload; `pip-audit` and `npm audit` clean.
 
 ## Known limitations

@@ -97,6 +97,7 @@ def test_lecturer_sees_only_assigned_offerings_and_cannot_edit(world):
 
 def test_registrar_assigns_lecturers(world, registrar):
     new_lecturer = make_user(Role.LECTURER)
+    admin = make_user(Role.ADMIN)
     offering = world.offerings["CS105"]
     response = client_for(registrar).put(f"/api/v1/course-offerings/{offering.pk}/lecturers/",
                                          {"lecturers": [{"lecturer": new_lecturer.pk, "is_coordinator": True}]},
@@ -104,8 +105,8 @@ def test_registrar_assigns_lecturers(world, registrar):
     assert response.status_code == 200
     assert response.data["assignments"][0]["lecturer"] == new_lecturer.pk
     response = client_for(registrar).put(f"/api/v1/course-offerings/{offering.pk}/lecturers/",
-                                         {"lecturers": [{"lecturer": registrar.pk}]}, format="json")
-    assert response.status_code == 400  # only lecturer accounts can be assigned
+                                         {"lecturers": [{"lecturer": admin.pk}]}, format="json")
+    assert response.status_code == 400  # administrators are not teaching staff
 
 
 def test_generate_offerings_from_curriculum(world, admin_user):

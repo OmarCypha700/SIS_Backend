@@ -47,6 +47,20 @@
 * Object scope is enforced in querysets: students only see their own records; lecturers only see
   offerings they are assigned to and students registered on them; out-of-scope ids return 404.
 * Lecturers and results officers receive a reduced student serializer without personal details.
+* **One account per person; offices through appointments.** Each person has their own role
+  (usually Lecturer/Tutor). An administrator records *appointments* to an office (Registrar or
+  Results Officer) with a start date, an optional last day, an "acting" flag, the appointment
+  reference and who made it. Access is the person's own role plus the offices they hold today:
+  * a tutor appointed Registrar keeps teaching their courses and also gets registry access;
+  * the office's result permissions (e.g. *Can approve results* for Results Officer) come with the
+    appointment and stop with it; transcript issuing still needs an administrator to allow it;
+  * ending an appointment (reshuffle, or relieved of the post, optionally disabling the account
+    for an inquiry) takes effect on the person's next request; nothing they did is changed;
+  * office alerts go to whoever holds the office now, never to a former holder;
+  * appointments are never deleted: ended ones are the history of who held which office, when.
+  Registrar and Results Officer accounts can also be assigned courses and then act as the
+  lecturer for those courses only. Shared office logins (e.g. `registrar@college`) should not be
+  used: the audit trail could not show which person acted.
 * Privileged result actions are separate per-user capabilities: approve results, publish results,
   request amendments, approve amendments. Approval and publication can be held by different people.
   By default the approver must differ from the submitter, and an amendment's approver must differ
@@ -76,6 +90,11 @@ account and role changes, student creation/changes/status/placement/deactivation
 registration submissions, on-behalf registrations, approvals and exports, assessment configuration,
 mark saves (with old and new values), result submission/return/approval/publication/export,
 amendment requests, approvals and rejections, institution and academic structure changes.
+
+Each entry also stores the capacity the person acted in at that moment (`actor_roles`, e.g.
+"Lecturer, Acting Results Officer"). It is kept as recorded, so it stays correct after later
+reshuffles, and the audit log can be filtered by it ("everything done as Registrar"). Appointment
+changes are themselves audited (`appointment.created`, `appointment.updated`, `appointment.ended`).
 
 Keys containing `password`, `token`, `secret`, `session`, `csrf` or `otp` are redacted.
 

@@ -264,7 +264,7 @@ class ClassListViewSet(viewsets.ViewSet):
 
     def get_queryset(self):
         queryset = CourseOffering.objects.select_related("course", "semester__academic_year")
-        if getattr(self.request.user, "role", None) == Role.LECTURER:
+        if getattr(self.request.user, "teaches_only", False):
             queryset = queryset.filter(assignments__lecturer=self.request.user)
         return queryset
 

@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.academics.models import CourseOffering, Semester
+from apps.accounts import appointments
 from apps.accounts.models import Role
 from apps.audit.models import AuditLog
 from apps.registration.models import CourseRegistration, RegistrationStatus, SemesterRegistration
@@ -67,6 +68,7 @@ def _registry_dashboard(user, semester):
         "signoff_blocked": signoff.blocked_sheets(),
     }
     if user.role == Role.ADMIN:
+        data["appointments_review"] = appointments.needs_review()
         data["recent_activity"] = [
             {"id": log.id, "created_at": log.created_at, "actor": log.actor_email, "action": log.action,
              "summary": log.summary}
@@ -169,11 +171,18 @@ class DashboardView(APIView):
     @extend_schema(responses={200: None})
     def get(self, request):
         semester = Semester.objects.select_related("academic_year").filter(is_current=True).first()
-        role = request.user.role
-        if role in (Role.ADMIN, Role.REGISTRAR):
-            return Response(_registry_dashboard(request.user, semester))
-        if role == Role.RESULTS_OFFICER:
-            return Response(_results_officer_dashboard(request.user, semester))
-        if role == Role.LECTURER:
-            return Response(_lecturer_dashboard(request.user, semester))
-        return Response(_student_dashboard(request.user, semester))
+        user = request.user
+        if user.teaches_only:
+            return Response(_lecturer_dashboard(user, semester))
+        if user.has_any_role(Role.ADMIN, Role.REGISTRAR):
+            data = _registry_dashboard(user, semester)
+        elif user.has_any_role(Role.RESULTS_OFFICER):
+            data = _results_officer_dashboard(user, semester)
+        else:
+            return Response(_student_dashboard(user, semester))
+        # Office holders who also teach see their own courses below their office's overview.
+        if Role.LECTURER in user.roles:
+            courses = _lecturer_dashboard(user, semester)["courses"]
+            if courses:
+                data["teaching"] = courses
+        return Response(data)

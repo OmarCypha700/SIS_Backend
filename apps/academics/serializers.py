@@ -198,7 +198,7 @@ class CourseOfferingSerializer(serializers.ModelSerializer):
 
 
 class LecturerAssignmentInputSerializer(serializers.Serializer):
-    lecturer = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=Role.LECTURER, is_active=True))
+    lecturer = serializers.PrimaryKeyRelatedField(queryset=User.objects.teaching_staff())
     is_coordinator = serializers.BooleanField(default=False)
 
 

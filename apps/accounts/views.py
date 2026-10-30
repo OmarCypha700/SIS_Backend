@@ -1,11 +1,12 @@
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.tokens import default_token_generator
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.utils.decorators import method_decorator
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
+from django_filters import rest_framework as django_filters
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -30,8 +31,12 @@ from common.tabular import requested_format, table_response
 from . import importing
 from . import services as account_services
 
-from .models import CAPABILITY_FIELDS, Role, User
+from . import appointments as appointment_services
+from .models import CAPABILITY_FIELDS, Appointment, Role, User
 from .serializers import (
+    AppointmentEndSerializer,
+    AppointmentSerializer,
+    AppointmentUpdateSerializer,
     AdminPasswordResetSerializer, CurrentUserSerializer, LecturerSummarySerializer, LoginSerializer,
     PasswordChangeSerializer,
     PasswordResetConfirmSerializer, PasswordResetRequestSerializer, ReasonInputSerializer, UserBulkSerializer,
@@ -173,7 +178,9 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
     ordering_fields = ["last_name", "email", "role", "date_joined", "last_login"]
 
     def get_queryset(self):
-        return User.objects.exclude(role=Role.STUDENT).order_by("last_name", "first_name")
+        return (User.objects.exclude(role=Role.STUDENT).order_by("last_name", "first_name")
+                .prefetch_related(Prefetch("appointments", queryset=Appointment.objects.current(),
+                                           to_attr="_current_appointments")))
 
     def perform_create(self, serializer):
         user = serializer.save()
@@ -296,7 +303,8 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
 
     @action(detail=False, methods=["get"])
     def lecturers(self, request):
-        queryset = User.objects.filter(role=Role.LECTURER, is_active=True).order_by("last_name", "first_name")
+        # Registrars and results officers can teach too.
+        queryset = User.objects.teaching_staff().order_by("last_name", "first_name")
         search = request.query_params.get("search")
         if search:
             queryset = queryset.filter(
@@ -304,3 +312,60 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
             )
         page = self.paginate_queryset(queryset)
         return self.get_paginated_response(LecturerSummarySerializer(page, many=True).data)
+
+
+class AppointmentFilter(django_filters.FilterSet):
+    current = django_filters.BooleanFilter(method="filter_current")
+
+    class Meta:
+        model = Appointment
+        fields = ["user", "office", "acting"]
+
+    def filter_current(self, queryset, name, value):
+        current = Appointment.objects.current().values("pk")
+        return queryset.filter(pk__in=current) if value else queryset.exclude(pk__in=current)
+
+
+class AppointmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin,
+                         viewsets.GenericViewSet):
+    """
+    Who holds which office, and when. Administrators record appointments; they are never deleted,
+    so the list is the history of every office holder.
+    """
+
+    serializer_class = AppointmentSerializer
+    permission_classes = [RoleBasedPermission]
+    read_roles = (Role.ADMIN,)
+    write_roles = (Role.ADMIN,)
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = AppointmentFilter
+    search_fields = ["user__first_name", "user__last_name", "user__email", "reference"]
+    ordering_fields = ["starts_on", "ends_on", "created_at"]
+
+    def get_queryset(self):
+        return Appointment.objects.select_related("user", "appointed_by", "ended_by")
+
+    def perform_create(self, serializer):
+        data = serializer.validated_data
+        serializer.instance = appointment_services.appoint(
+            data["user"], office=data["office"], starts_on=data["starts_on"], ends_on=data.get("ends_on"),
+            acting=data.get("acting", False), reference=data.get("reference", ""), notes=data.get("notes", ""),
+            actor=self.request.user)
+
+    @extend_schema(request=AppointmentUpdateSerializer, responses=AppointmentSerializer)
+    def partial_update(self, request, pk=None):
+        payload = AppointmentUpdateSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        appointment = appointment_services.update_appointment(self.get_object(), actor=request.user,
+                                                              **payload.validated_data)
+        return Response(self.get_serializer(self.get_queryset().get(pk=appointment.pk)).data)
+
+    @extend_schema(request=AppointmentEndSerializer, responses=AppointmentSerializer)
+    @action(detail=True, methods=["post"])
+    def end(self, request, pk=None):
+        """End now (reshuffle, or relieved of the post). Optionally disable the account during an inquiry."""
+        payload = AppointmentEndSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        appointment = appointment_services.end_appointment(self.get_object(), actor=request.user,
+                                                           **payload.validated_data)
+        return Response(self.get_serializer(self.get_queryset().get(pk=appointment.pk)).data)

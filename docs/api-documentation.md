@@ -16,6 +16,10 @@ Session cookies, not tokens.
 3. Send `X-CSRFToken` on every `POST`/`PUT`/`PATCH`/`DELETE`.
 4. `POST /api/v1/auth/logout/` ends the session.
 
+`auth/me/` returns `role` (the person's own role) and `roles`: their role, `LECTURER` for staff who
+can teach, and any office held now through an appointment. Use `roles` (and `capabilities`) to
+decide what to show; the server applies the same rules.
+
 Unauthenticated requests receive `403` with `code: "not_authenticated"`. Login, password reset and
 password change are rate limited (`429`).
 
@@ -43,7 +47,8 @@ password change are rate limited (`429`).
 | Area | Endpoints | Who |
 |---|---|---|
 | Auth | `auth/csrf/`, `auth/login/`, `auth/logout/`, `auth/me/` (GET, PATCH phone), `auth/password/change/`, `auth/password/reset/`, `auth/password/reset/confirm/` | Everyone |
-| Staff accounts | `users/` (list/create/update), `users/{id}/activate/`, `deactivate/`, `set-password/`, `users/lecturers/` | Admin (lecturer lookup: registry, results officer) |
+| Staff accounts | `users/` (list/create/update), `users/{id}/activate/`, `deactivate/`, `set-password/`, `users/lecturers/` (all teaching staff) | Admin (lecturer lookup: registry, results officer) |
+| Appointments | `appointments/` (list `?user=&office=&current=`, create), `appointments/{id}/` (PATCH last day, reference, notes), `appointments/{id}/end/` (reason, optional `deactivate_account`) | Admin |
 | Institution | `institution/` (public branding), `institution/settings/` (GET, PATCH multipart for logo) | Public / Admin |
 | Academic periods | `academic-years/`, `semesters/`, `semesters/{id}/set-current/`, `academic/current-period/` | Staff read; admin/registrar write |
 | Structure | `departments/`, `levels/`, `programmes/`, `courses/`, `programme-courses/` | Staff read; admin write |

@@ -26,7 +26,7 @@ def submitted_by(world, teacher):
 
 
 def tutor_who_is_also_results_officer():
-    # A tutor holding the results officer's approval permission (until appointments exist, via the flag).
+    # A tutor given the results officer's approval permission directly (an appointment works the same way).
     return make_user(Role.LECTURER, can_approve_results=True)
 
 

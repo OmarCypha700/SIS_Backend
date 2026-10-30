@@ -32,7 +32,8 @@ FINAL_STATUSES = (StudentStatus.COMPLETED, StudentStatus.GRADUATED)
 
 
 def can_issue(user):
-    return bool(user and user.is_active and user.role in TRANSCRIPT_ISSUER_ROLES and user.can_issue_transcripts)
+    return bool(user and user.is_active and user.has_any_role(*TRANSCRIPT_ISSUER_ROLES)
+                and user.can_issue_transcripts)
 
 
 def require_issuer(user):

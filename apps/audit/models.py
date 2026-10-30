@@ -22,6 +22,9 @@ class AuditLog(models.Model):
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
     actor_email = models.CharField(max_length=254, blank=True)
+    # The capacity the person acted in at that moment: their own role and any offices they held,
+    # e.g. "LECTURER ACTING_RESULTS_OFFICER". Kept as text so it survives later reshuffles.
+    actor_roles = models.CharField(max_length=200, blank=True)
     action = models.CharField(max_length=64, db_index=True)
     entity_type = models.CharField(max_length=64, blank=True, db_index=True)
     entity_id = models.CharField(max_length=64, blank=True)

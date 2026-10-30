@@ -188,7 +188,7 @@ class CourseOfferingViewSet(AcademicViewSet):
             .order_by("course__code", "id")
         )
         user = self.request.user
-        if getattr(user, "role", None) == Role.LECTURER:
+        if getattr(user, "teaches_only", False):
             # Lecturers only ever see offerings they are assigned to.
             queryset = queryset.filter(assignments__lecturer=user)
         return queryset

@@ -17,7 +17,7 @@ from common.pdf import pdf_response
 from common.tabular import read_table, requested_format, table_response
 from common.bulk import run_bulk
 from common.exceptions import DomainError
-from common.permissions import RoleBasedPermission
+from common.permissions import RoleBasedPermission, has_role
 
 from . import photos, services
 from .models import Student
@@ -68,7 +68,7 @@ class StudentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
     def get_queryset(self):
         queryset = Student.objects.select_related("programme", "current_level", "user")
         user = self.request.user
-        if getattr(user, "role", None) == Role.LECTURER:
+        if getattr(user, "teaches_only", False):
             # Only students registered on one of the lecturer's offerings.
             queryset = queryset.filter(
                 course_registrations__offering__assignments__lecturer=user,
@@ -81,7 +81,8 @@ class StudentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
     def get_serializer_class(self):
         if self.action == "me":
             return StudentSelfSerializer
-        if getattr(self.request.user, "role", None) in (Role.LECTURER, Role.RESULTS_OFFICER):
+        user = self.request.user
+        if has_role(user, Role.LECTURER, Role.RESULTS_OFFICER) and not has_role(user, Role.ADMIN, Role.REGISTRAR):
             return StudentSummarySerializer
         return StudentSerializer
 
@@ -155,7 +156,7 @@ class StudentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
             # The address changes whenever the photo changes, so browsers may keep it for a week.
             response["Cache-Control"] = "private, max-age=604800"
             return response
-        if request.user.role not in REGISTRY:
+        if not request.user.has_any_role(*REGISTRY):
             raise DomainError("Only the registry can change student photos.", code="permission_denied", status_code=403)
         if request.method == "DELETE":
             photos.remove_photo(student, actor=request.user)

@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from apps.accounts.models import Role
+from apps.accounts.models import OVERSIGHT_ROLES, Role
 from apps.audit.services import log_action
 from apps.institutions.models import AcademicRegulation, InstitutionProfile
 from apps.notifications import events as notify_events
@@ -29,20 +29,22 @@ def forbidden(message):
 # --- Access helpers ---------------------------------------------------------
 
 def is_assigned_lecturer(user, offering):
-    return user.role == Role.LECTURER and offering.assignments.filter(lecturer=user).exists()
+    """Teaching staff (including a registrar or results officer who teaches) assigned to this course."""
+    return Role.LECTURER in getattr(user, "roles", ()) and offering.assignments.filter(lecturer=user).exists()
 
 
 def can_view_sheet(user, sheet):
-    if user.role in (Role.ADMIN, Role.REGISTRAR, Role.RESULTS_OFFICER):
+    if user.has_any_role(*OVERSIGHT_ROLES):
         return True
     return is_assigned_lecturer(user, sheet.offering)
 
 
 def visible_sheets(user, queryset):
-    role = getattr(user, "role", None)
-    if role in (Role.ADMIN, Role.REGISTRAR, Role.RESULTS_OFFICER):
+    if not getattr(user, "is_authenticated", False):
+        return queryset.none()
+    if user.has_any_role(*OVERSIGHT_ROLES):
         return queryset
-    if role == Role.LECTURER:
+    if Role.LECTURER in user.roles:
         return queryset.filter(offering__assignments__lecturer=user).distinct()
     return queryset.none()
 
@@ -81,7 +83,7 @@ def _active_registrations(offering):
 @transaction.atomic
 def replace_components(sheet, components, *, actor):
     """components: list of {"id"?, "name", "weight", "max_score", "is_required"}; replaces the whole set."""
-    if not (is_assigned_lecturer(actor, sheet.offering) or actor.role in (Role.ADMIN, Role.RESULTS_OFFICER)):
+    if not (is_assigned_lecturer(actor, sheet.offering) or actor.has_any_role(Role.ADMIN, Role.RESULTS_OFFICER)):
         raise forbidden("Only the assigned lecturer or an examinations officer can configure assessments.")
     _require_editable(sheet)
     names = [c["name"].strip().lower() for c in components]
@@ -331,7 +333,7 @@ def submit_sheet(sheet, *, actor, comment=""):
 @transaction.atomic
 def return_sheet(sheet, *, actor, comment):
     sheet = ResultSheet.objects.select_for_update().get(pk=sheet.pk)
-    if not actor.can_approve_results:
+    if not actor.has_capability("can_approve_results"):
         raise forbidden("You are not authorised to review results.")
     if sheet.status not in (SheetStatus.SUBMITTED, SheetStatus.APPROVED):
         raise DomainError("Only submitted or approved (unpublished) results can be returned.",
@@ -350,7 +352,7 @@ def return_sheet(sheet, *, actor, comment):
 @transaction.atomic
 def approve_sheet(sheet, *, actor, comment=""):
     sheet = ResultSheet.objects.select_for_update().select_related("offering__course").get(pk=sheet.pk)
-    if not actor.can_approve_results:
+    if not actor.has_capability("can_approve_results"):
         raise forbidden("You are not authorised to approve results.")
     if sheet.status != SheetStatus.SUBMITTED:
         raise DomainError("Only submitted results can be approved.", code="invalid_transition", status_code=409)
@@ -371,7 +373,7 @@ def approve_sheet(sheet, *, actor, comment=""):
 @transaction.atomic
 def publish_sheet(sheet, *, actor, comment=""):
     sheet = ResultSheet.objects.select_for_update().get(pk=sheet.pk)
-    if not actor.can_publish_results:
+    if not actor.has_capability("can_publish_results"):
         raise forbidden("You are not authorised to publish results.")
     if sheet.status != SheetStatus.APPROVED:
         raise DomainError("Only approved results can be published.", code="invalid_transition", status_code=409)
@@ -410,9 +412,9 @@ def _current_marks(result):
 @transaction.atomic
 def request_amendment(result, *, new_marks, reason, actor):
     result = CourseResult.objects.select_related("sheet__grading_scheme", "offering").select_for_update().get(pk=result.pk)
-    if not actor.can_request_amendments:
+    if not actor.has_capability("can_request_amendments"):
         raise forbidden("You are not authorised to request result amendments.")
-    if actor.role == Role.LECTURER and not is_assigned_lecturer(actor, result.offering):
+    if actor.teaches_only and not is_assigned_lecturer(actor, result.offering):
         raise forbidden("You can only request amendments for courses you teach.")
     if result.sheet.status != SheetStatus.PUBLISHED:
         raise DomainError("Amendments apply to published results. Unpublished results can be returned for correction.",
@@ -460,7 +462,7 @@ def request_amendment(result, *, new_marks, reason, actor):
 def review_amendment(amendment, *, approve, actor, comment=""):
     amendment = ResultAmendment.objects.select_for_update().select_related(
         "course_result__sheet__grading_scheme", "course_result__offering").get(pk=amendment.pk)
-    if not actor.can_approve_amendments:
+    if not actor.has_capability("can_approve_amendments"):
         raise forbidden("You are not authorised to approve result amendments.")
     if amendment.status != AmendmentStatus.PENDING:
         raise DomainError("This amendment has already been reviewed.", code="already_reviewed", status_code=409)

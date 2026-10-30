@@ -130,6 +130,19 @@ def resit_changed(resit, actor, status):
                link="/my-results")
 
 
+# --- Appointments --------------------------------------------------------------------------
+
+def appointment_changed(appointment, actor, *, started):
+    if started:
+        title = f"You have been appointed {appointment.title}"
+        body = f"From {appointment.starts_on:%d %b %Y}" + (
+            f" to {appointment.ends_on:%d %b %Y}." if appointment.ends_on else ".")
+    else:
+        title = f"Your appointment as {appointment.title} has ended"
+        body = "The office's access has been removed from your account. Your own role is unchanged."
+    notify([appointment.user], kind=Kind.APPOINTMENT, actor=actor, title=title, body=body, link="/profile")
+
+
 # --- Registration, teaching, students ----------------------------------------------------
 
 def registration_pending(registration, actor):

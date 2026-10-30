@@ -179,7 +179,8 @@ def build_digests():
 # --- Who to tell ----------------------------------------------------------------
 
 def users_with(flag):
-    return list(User.objects.filter(is_active=True, **{flag: True}).exclude(role=Role.STUDENT))
+    """Everyone who can act on it now, including through an office (never a former office holder)."""
+    return list(User.objects.with_capability(flag))
 
 
 def lecturers_of(offering):
@@ -187,7 +188,7 @@ def lecturers_of(offering):
 
 
 def registry_staff():
-    registrars = list(User.objects.filter(is_active=True, role=Role.REGISTRAR))
+    registrars = list(User.objects.holding(Role.REGISTRAR))
     return registrars or list(User.objects.filter(is_active=True, role=Role.ADMIN))
 
 

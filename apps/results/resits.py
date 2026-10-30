@@ -33,10 +33,11 @@ RESULTS_ROLES = (Role.ADMIN, Role.REGISTRAR, Role.RESULTS_OFFICER)
 
 
 def visible_resit_sheets(user, queryset):
-    role = getattr(user, "role", None)
-    if role in RESULTS_ROLES:
+    if not getattr(user, "is_authenticated", False):
+        return queryset.none()
+    if user.has_any_role(*RESULTS_ROLES):
         return queryset
-    if role == Role.LECTURER:
+    if Role.LECTURER in user.roles:
         return queryset.filter(offering__assignments__lecturer=user).distinct()
     return queryset.none()
 
@@ -51,7 +52,7 @@ def resits_used(student, course_id):
 @transaction.atomic
 def open_resit(offering, *, actor, registration_deadline=None):
     regulation = AcademicRegulation.load()
-    if actor.role not in RESULTS_ROLES:
+    if not actor.has_any_role(*RESULTS_ROLES):
         raise forbidden("Only examinations or registry staff can open a resit.")
     if not regulation.resits_enabled:
         raise DomainError("Resits are not enabled in the academic regulations.", code="resits_disabled")
@@ -82,7 +83,7 @@ def open_resit(offering, *, actor, registration_deadline=None):
 def _check_registration_open(sheet, actor):
     if sheet.status not in (SheetStatus.DRAFT, SheetStatus.RETURNED):
         raise DomainError("Resit registration has closed for this course.", code="closed", status_code=409)
-    is_staff = actor.role in (Role.ADMIN, Role.REGISTRAR, Role.RESULTS_OFFICER)
+    is_staff = actor.has_any_role(*RESULTS_ROLES)
     if not is_staff and sheet.registration_deadline and timezone.now() > sheet.registration_deadline:
         raise DomainError("The resit registration deadline has passed.", code="deadline_passed", status_code=409)
 
@@ -96,7 +97,7 @@ def register_entries(sheet, entry_ids, *, actor, reason=""):
     if len(entries) != len(set(entry_ids)):
         raise DomainError("One or more resit entries were not found.", code="not_found", status_code=404)
     on_behalf = actor.role != Role.STUDENT
-    if on_behalf and actor.role not in (Role.ADMIN, Role.REGISTRAR, Role.RESULTS_OFFICER):
+    if on_behalf and not actor.has_any_role(*RESULTS_ROLES):
         raise forbidden("You cannot register students for resits.")
     if on_behalf and not (reason or "").strip():
         raise DomainError("A reason is required when registering students for a resit.", code="reason_required")
@@ -205,7 +206,7 @@ def submit(sheet, *, actor, comment=""):
 @transaction.atomic
 def return_for_correction(sheet, *, actor, comment=""):
     sheet = ResitSheet.objects.select_for_update().get(pk=sheet.pk)
-    if not actor.can_approve_results:
+    if not actor.has_capability("can_approve_results"):
         raise forbidden("You are not authorised to review results.")
     if sheet.status not in (SheetStatus.SUBMITTED, SheetStatus.APPROVED):
         raise DomainError("Only submitted or approved resits can be returned.", code="invalid_transition", status_code=409)
@@ -219,7 +220,7 @@ def return_for_correction(sheet, *, actor, comment=""):
 @transaction.atomic
 def approve(sheet, *, actor, comment=""):
     sheet = ResitSheet.objects.select_for_update().get(pk=sheet.pk)
-    if not actor.can_approve_results:
+    if not actor.has_capability("can_approve_results"):
         raise forbidden("You are not authorised to approve results.")
     if sheet.status != SheetStatus.SUBMITTED:
         raise DomainError("Only submitted resits can be approved.", code="invalid_transition", status_code=409)
@@ -233,7 +234,7 @@ def approve(sheet, *, actor, comment=""):
 @transaction.atomic
 def publish(sheet, *, actor, comment=""):
     sheet = ResitSheet.objects.select_for_update().get(pk=sheet.pk)
-    if not actor.can_publish_results:
+    if not actor.has_capability("can_publish_results"):
         raise forbidden("You are not authorised to publish results.")
     if sheet.status != SheetStatus.APPROVED:
         raise DomainError("Only approved resits can be published.", code="invalid_transition", status_code=409)

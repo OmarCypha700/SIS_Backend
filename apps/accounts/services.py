@@ -34,6 +34,8 @@ def staff_deletion_blockers(user, actor):
     reasons += account_usage(user)
     if user.lecturer_assignments.exists():
         reasons.append("The person is assigned to teach a course.")
+    if user.appointments.exists():
+        reasons.append("The person has held an office (appointment history is kept).")
     return reasons
 
 
