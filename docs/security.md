@@ -47,6 +47,11 @@
 * Object scope is enforced in querysets: students only see their own records; lecturers only see
   offerings they are assigned to and students registered on them; out-of-scope ids return 404.
 * Lecturers and results officers receive a reduced student serializer without personal details.
+* **Accounts Officer** (role, or an appointed office): sees only the financial-clearance list (student
+  number, name, programme, level, status, clearance and note). No results, contact details, photos
+  or student records. Every clearance and revocation is audited per student. When the institution
+  requires clearance, only an administrator registering on the student's behalf can override it, and
+  the override is audited.
 * **One account per person; offices through appointments.** Each person has their own role
   (usually Lecturer/Tutor). An administrator records *appointments* to an office (Registrar or
   Results Officer) with a start date, an optional last day, an "acting" flag, the appointment

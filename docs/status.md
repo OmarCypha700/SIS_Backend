@@ -83,7 +83,15 @@
   and lists the rest with the reason. Courses are only added, never dropped. Large classes are sent in
   batches of 50 with a progress bar. Students are told in the app and by push (no email). Pending
   registrations can be approved or rejected together from the Registrations page.
-* **Quality** – 235 backend tests and 28 Playwright end-to-end journeys passing; ESLint clean;
+* **Year-to-year progression** – repeating a level means the whole year again (passed courses
+  included, earlier results kept but superseded); excused students are recorded as Incomplete and
+  complete through a deferred examination or amendment; the registry can withdraw a student from a
+  semester mid-way; progression reviews warn about outstanding work and follow-up reviews pick up
+  late outcomes.
+* **Financial clearance** – an Accounts Officer role clears students per semester (one by one, in
+  bulk or from a spreadsheet). When the institution turns it on, students cannot register until
+  cleared, and results can optionally be withheld until then.
+* **Quality** – 251 backend tests and 31 Playwright end-to-end journeys passing; ESLint clean;
   `check --deploy` clean apart from opt-in HSTS preload; `pip-audit` and `npm audit` clean.
 
 ## Known limitations

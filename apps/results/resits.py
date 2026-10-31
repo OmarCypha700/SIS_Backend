@@ -45,7 +45,7 @@ def visible_resit_sheets(user, queryset):
 def resits_used(student, course_id):
     return ResitEntry.objects.filter(
         course_result__student=student, course_result__offering__course_id=course_id,
-        status=ResitEntryStatus.COMPLETED,
+        status=ResitEntryStatus.COMPLETED, is_deferred=False,
     ).count()
 
 
@@ -54,28 +54,39 @@ def open_resit(offering, *, actor, registration_deadline=None):
     regulation = AcademicRegulation.load()
     if not actor.has_any_role(*RESULTS_ROLES):
         raise forbidden("Only examinations or registry staff can open a resit.")
-    if not regulation.resits_enabled:
-        raise DomainError("Resits are not enabled in the academic regulations.", code="resits_disabled")
     sheet = ResultSheet.objects.filter(offering=offering).first()  # fresh status, not a cached relation
     if sheet is None or sheet.status != SheetStatus.PUBLISHED:
         raise DomainError("A resit can only be opened after the course results are published.", code="not_published")
     if ResitSheet.objects.filter(offering=offering).exists():
         raise DomainError("A resit has already been opened for this course offering.", code="exists", status_code=409)
 
-    failing = CourseResult.objects.filter(sheet=sheet, is_pass=False, is_published=True).select_related("student", "offering")
-    if regulation.resit_min_total is not None:
-        failing = failing.filter(total_score__gte=regulation.resit_min_total)
-    candidates = [r for r in failing if resits_used(r.student, offering.course_id) < regulation.max_resits_per_course]
+    # Excused (Incomplete) students sit a deferred examination at the same sitting, whether or not
+    # resits are enabled. They are registered automatically.
+    deferred = list(CourseResult.objects.filter(sheet=sheet, is_incomplete=True, is_published=True)
+                    .select_related("student", "offering"))
+    candidates = []
+    if regulation.resits_enabled:
+        failing = (CourseResult.objects.filter(sheet=sheet, is_pass=False, is_published=True, is_incomplete=False)
+                   .select_related("student", "offering"))
+        if regulation.resit_min_total is not None:
+            failing = failing.filter(total_score__gte=regulation.resit_min_total)
+        candidates = [r for r in failing if resits_used(r.student, offering.course_id) < regulation.max_resits_per_course]
+    elif not deferred:
+        raise DomainError("Resits are not enabled in the academic regulations.", code="resits_disabled")
     waiting = ResultAmendment.objects.filter(course_result__in=candidates, status=AmendmentStatus.PENDING).count()
     if waiting:
         raise DomainError(f"{waiting} amendment(s) to these results are awaiting review. Approve or reject them "
                           "before opening the resit.", code="amendments_pending", status_code=409)
     resit = ResitSheet.objects.create(offering=offering, registration_deadline=registration_deadline, opened_by=actor)
+    now = timezone.now()
     ResitEntry.objects.bulk_create([
         ResitEntry(sheet=resit, course_result=r, original_total=r.total_score, original_grade=r.grade) for r in candidates
+    ] + [
+        ResitEntry(sheet=resit, course_result=r, original_total=r.total_score, original_grade=r.grade, is_deferred=True,
+                   status=ResitEntryStatus.REGISTERED, registered_by=actor, registered_at=now) for r in deferred
     ])
     log_action("resit.opened", actor=actor, instance=resit, summary=f"Resit opened for {offering}",
-               metadata={"eligible": len(candidates), "deadline": registration_deadline})
+               metadata={"eligible": len(candidates), "deferred": len(deferred), "deadline": registration_deadline})
     notify_events.resit_opened(resit, actor)
     return resit
 
@@ -169,7 +180,13 @@ def preview(entry, sheet=None):
     else:
         total = entry.score
     rounded, band = grading.grade(total, scheme, bands)
-    band, capped = grading.cap_band(band, bands, AcademicRegulation.load().resit_max_grade_point)
+    regulation = AcademicRegulation.load()
+    if entry.is_deferred:
+        # A first sitting: only the retake cap can apply, as it would have to the original.
+        cap = regulation.retake_max_grade_point if result.registration.is_retake else None
+    else:
+        cap = regulation.resit_max_grade_point
+    band, capped = grading.cap_band(band, bands, cap)
     return rounded, band, capped
 
 
@@ -194,7 +211,8 @@ def submit(sheet, *, actor, comment=""):
     registered = list(sheet.entries.filter(status=ResitEntryStatus.REGISTERED).select_related("course_result__student"))
     if not registered:
         raise DomainError("No students are registered for this resit.", code="no_students")
-    missing = [e.course_result.student.student_number for e in registered if e.score is None]
+    # A deferred candidate who does not sit stays Incomplete, so only resit candidates need a score.
+    missing = [e.course_result.student.student_number for e in registered if e.score is None and not e.is_deferred]
     if missing:
         raise DomainError(f"{len(missing)} registered student(s) have no resit score.", code="missing_marks",
                           errors=[{"student_number": n} for n in missing])
@@ -248,11 +266,16 @@ def publish(sheet, *, actor, comment=""):
             continue
         if entry.status != ResitEntryStatus.REGISTERED:
             continue
+        if entry.score is None:  # a deferred candidate who did not sit: still Incomplete
+            entry.status = ResitEntryStatus.NOT_TAKEN
+            entry.save(update_fields=["status", "updated_at"])
+            continue
         total, band, capped = preview(entry)
         result = entry.course_result
         before = {"total": str(result.total_score), "grade": result.grade, "grade_point": str(result.grade_point)}
         result.total_score, result.grade, result.grade_point, result.is_pass = total, band.letter, band.grade_point, band.is_pass
-        result.is_resit, result.grade_capped = True, capped
+        result.is_resit, result.grade_capped = not entry.is_deferred, capped
+        result.is_incomplete = False
         result.save()
         entry.status, entry.new_total, entry.new_grade = ResitEntryStatus.COMPLETED, total, band.letter
         entry.save(update_fields=["status", "new_total", "new_grade", "updated_at"])

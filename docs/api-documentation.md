@@ -64,6 +64,8 @@ password change are rate limited (`429`).
 | Resits | `resit-sheets/`, `resit-sheets/open/`, `resit-sheets/{id}/register/`, `scores/` (PUT), `submit/`, `return/`, `approve/`, `publish/`; `my-resits/`, `my-resits/{id}/register/` | Results staff / assigned lecturer / student |
 | Progression | `progression-reviews/`, `progression-reviews/generate/`, `progression-reviews/{id}/apply/`, `progression-decisions/?review=`, `progression-decisions/{id}/override/`, `exclude/` | Registry write; results officer read |
 | Audit | `audit-logs/` (read-only) | Admin all; registrar and results officer scoped |
+| Financial clearance | `financial-clearances/?semester=&programme=&level=&cleared=&search=`, `financial-clearances/summary/`, `financial-clearances/set/` (`semester`, `students`, `cleared`, `note`), `financial-clearances/import/` (multipart `file`, `semester`), `financial-clearances/template/` | Admin and Accounts Officer; registrar read-only |
+| Year changes | `result-sheets/{id}/excuse/` (`registration`, `reason`, `excused`), `registrations/{id}/withdraw/` (`reason`), `students/{id}/change-status/` (`withdraw_from_semester`), `progression-reviews/generate/` (`follow_up`), `progression-reviews/{id}/apply/` (`acknowledge_outstanding`) | As named |
 | Dashboard | `dashboard/` | Everyone (role-specific payload) |
 
 ## Examples

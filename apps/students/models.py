@@ -85,6 +85,10 @@ class Student(TimeStampedModel):
     current_level = models.ForeignKey("academics.Level", on_delete=models.PROTECT, related_name="students")
     status = models.CharField(max_length=20, choices=StudentStatus.choices, default=StudentStatus.ACTIVE)
     academic_standing = models.CharField(max_length=12, choices=AcademicStanding.choices, default=AcademicStanding.GOOD)
+    # Set when a progression review makes the student repeat their level: every course of that level
+    # (passed ones included) is taken again. Cleared on promotion.
+    repeating_level = models.ForeignKey("academics.Level", null=True, blank=True, on_delete=models.PROTECT,
+                                        related_name="+")
     # Private files, re-encoded as WebP by apps/students/photos.py and served through the API only.
     photo = models.ImageField(upload_to="students/photos/", storage=private_storage, blank=True)
     photo_thumbnail = models.ImageField(upload_to="students/photos/", storage=private_storage, blank=True)

@@ -90,6 +90,12 @@ class MarksInputSerializer(serializers.Serializer):
                                      help_text="Recorded in the audit log.")
 
 
+class ExcuseSerializer(serializers.Serializer):
+    registration = serializers.IntegerField(min_value=1)
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    excused = serializers.BooleanField(default=True, help_text="false removes the excusal.")
+
+
 class TransitionSerializer(serializers.Serializer):
     comment = serializers.CharField(required=False, allow_blank=True, max_length=4000)
 
@@ -200,7 +206,8 @@ class MyResitSerializer(serializers.ModelSerializer):
     class Meta:
         model = ResitEntry
         fields = ["id", "sheet", "course_code", "course_title", "semester_name", "registration_deadline",
-                  "sheet_status", "status", "status_display", "original_total", "original_grade", "new_grade"]
+                  "sheet_status", "status", "status_display", "original_total", "original_grade", "new_grade",
+                  "is_deferred"]
 
     def get_new_grade(self, obj) -> str | None:
         # The new grade is only revealed once the resit results are published.

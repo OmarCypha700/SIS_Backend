@@ -9,10 +9,12 @@ class ProgressionReviewSerializer(serializers.ModelSerializer):
     generated_by_name = serializers.CharField(source="generated_by.get_full_name", read_only=True, default=None)
     applied_by_name = serializers.CharField(source="applied_by.get_full_name", read_only=True, default=None)
     decision_count = serializers.IntegerField(read_only=True, required=False)
+    is_follow_up = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ProgressionReview
-        fields = ["id", "semester", "semester_name", "status", "status_display", "is_final_term", "regulation_snapshot",
+        fields = ["id", "semester", "semester_name", "sequence", "is_follow_up", "status", "status_display",
+                  "is_final_term", "regulation_snapshot",
                   "generated_by_name", "applied_by_name", "applied_at", "decision_count", "created_at", "updated_at"]
 
 
@@ -35,6 +37,12 @@ class ProgressionDecisionSerializer(serializers.ModelSerializer):
 
 class GenerateReviewSerializer(serializers.Serializer):
     semester = serializers.IntegerField()
+    follow_up = serializers.BooleanField(default=False, help_text="Start a follow-up after the review was applied.")
+
+
+class ApplyReviewSerializer(serializers.Serializer):
+    acknowledge_outstanding = serializers.BooleanField(
+        default=False, help_text="Apply although results, resits or amendments for the semester are unfinished.")
 
 
 class OverrideSerializer(serializers.Serializer):

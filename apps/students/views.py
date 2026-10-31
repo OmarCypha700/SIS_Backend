@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import transaction
 from django.http import FileResponse, Http404
 from django_filters import rest_framework as django_filters
 from drf_spectacular.types import OpenApiTypes
@@ -11,6 +12,7 @@ from rest_framework.response import Response
 from apps.accounts.models import Role, User
 from apps.accounts.serializers import validate_new_password
 from apps.audit.services import log_action
+from apps.registration import services as registration_services
 from apps.results.services import build_academic_record
 from common import pdf
 from common.pdf import pdf_response
@@ -105,7 +107,12 @@ class StudentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
         student = self.get_object()
         payload = StatusChangeSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
-        services.change_status(student, actor=request.user, **payload.validated_data)
+        data = dict(payload.validated_data)
+        withdraw = data.pop("withdraw_from_semester")
+        with transaction.atomic():
+            services.change_status(student, actor=request.user, **data)
+            if withdraw:
+                registration_services.withdraw_from_current_semester(student, reason=data["reason"], actor=request.user)
         return Response(StudentSerializer(student, context=self.get_serializer_context()).data)
 
     @extend_schema(request=PlacementChangeSerializer, responses=StudentSerializer)

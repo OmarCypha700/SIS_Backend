@@ -15,7 +15,7 @@ class CourseRegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CourseRegistration
-        fields = ["id", "offering", "course_code", "course_title", "credits", "category", "is_retake", "status",
+        fields = ["id", "offering", "course_code", "course_title", "credits", "category", "is_retake", "is_repeat", "status",
                   "created_at", "dropped_at"]
 
 
@@ -82,6 +82,10 @@ class BulkReviewSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=["approve", "reject"])
     ids = BulkIdsField()
     reason = serializers.CharField(max_length=2000, help_text="Recorded as the review comment on each registration.")
+
+
+class WithdrawSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=2000)
 
 
 class ReviewSerializer(serializers.Serializer):

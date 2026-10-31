@@ -159,6 +159,12 @@ def registration_reviewed(registration, actor):
            body=f"Semester: {registration.semester}.", link="/registration")
 
 
+def financially_cleared(students, semester, actor):
+    notify(student_users(students), kind=Kind.FINANCIAL_CLEARANCE, actor=actor, email=False,
+           title=f"You have been financially cleared for {semester}",
+           body="You can now register your courses.", link="/registration")
+
+
 def registered_by_registry(students, semester, actor):
     """Bulk registration: in-app and push only, so a large cohort never uses the email allowance."""
     notify(student_users(students), kind=Kind.REGISTRATION_REVIEWED, actor=actor, email=False,

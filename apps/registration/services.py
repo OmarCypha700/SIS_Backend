@@ -12,7 +12,9 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.academics.models import CourseCategory, CourseOffering, OfferingStatus, PeriodStatus, ProgrammeCourse
+from apps.accounts.models import Role
 from apps.audit.services import log_action
+from apps.finance import services as finance
 from apps.institutions.models import AcademicRegulation, InstitutionProfile
 from apps.notifications import events as notify_events
 from apps.results.models import CourseResult, StudentMark
@@ -31,6 +33,7 @@ class OfferingOption:
     category: str = CourseCategory.ELECTIVE
     is_compulsory: bool = False
     is_retake: bool = False
+    is_repeat: bool = False  # passed before, taken again in a repeat year
     is_registered: bool = False
     seats_left: int | None = None
     reasons: list = field(default_factory=list)
@@ -50,6 +53,7 @@ class OfferingOption:
             "category": self.category,
             "is_compulsory": self.is_compulsory,
             "is_retake": self.is_retake,
+            "is_repeat": self.is_repeat,
             "is_registered": self.is_registered,
             "eligible": self.eligible,
             "reasons": self.reasons,
@@ -110,10 +114,12 @@ def build_options(student, semester, *, lock=False):
     pending = set(
         CourseRegistration.objects.filter(student=student, status=CourseRegistrationStatus.ACTIVE)
         .exclude(offering__semester=semester)
-        .filter(Q(result__isnull=True) | Q(result__is_published=False))
+        .filter(Q(result__isnull=True) | Q(result__is_published=False) | Q(result__is_incomplete=True))
         .values_list("offering__course_id", flat=True)
     )
     student_level = student.current_level
+    # Repeating the level: every course of it is taken again, passed ones included.
+    repeating = student.repeating_level_id is not None and student.repeating_level_id == student.current_level_id
 
     options = {}
     for offering in offerings:
@@ -142,7 +148,10 @@ def build_options(student, semester, *, lock=False):
             option.reasons.append("This course is above your current level.")
 
         if course.id in passed:
-            option.reasons.append("You have already passed this course.")
+            if repeating and link is not None and open_to_programme and link.level_id == student_level.id:
+                option.is_repeat = True
+            else:
+                option.reasons.append("You have already passed this course.")
         elif course.id in failed:
             option.is_retake = True
             if not profile.allow_retakes:
@@ -165,7 +174,7 @@ def build_options(student, semester, *, lock=False):
 
         is_curriculum_compulsory = link is not None and open_to_programme and link.category == CourseCategory.COMPULSORY
         option.is_compulsory = bool(
-            is_curriculum_compulsory and course.id not in passed and (
+            is_curriculum_compulsory and (course.id not in passed or option.is_repeat) and (
                 (link.level_id == student_level.id and link.term_number == semester.term_number)
                 # A failed compulsory course must be retaken whenever it is offered, if the regulations say so.
                 or (regulation.failed_compulsory_must_be_retaken and option.is_retake)
@@ -180,7 +189,7 @@ def build_options(student, semester, *, lock=False):
 def attempt_counts(student):
     """Number of published results per course id, i.e. completed attempts."""
     counts = {}
-    for course_id in CourseResult.objects.filter(student=student, is_published=True).values_list(
+    for course_id in CourseResult.objects.filter(student=student, is_published=True, is_incomplete=False).values_list(
             "offering__course_id", flat=True):
         counts[course_id] = counts.get(course_id, 0) + 1
     return counts
@@ -220,6 +229,13 @@ def submit_registration(student, semester, offering_ids, *, actor, on_behalf=Fal
     ctx = build_options(student, semester, lock=True)
     if not ctx.can_register:
         raise DomainError(f"Students with status '{student.get_status_display()}' cannot register.", code="status_blocked")
+    not_cleared = finance.clearance_block(student, semester, ctx.profile)
+    if not_cleared:
+        # Only an administrator, registering on the student's behalf with a reason, may override it.
+        if not (on_behalf and actor.has_any_role(Role.ADMIN)):
+            raise DomainError(not_cleared, code="not_cleared", status_code=403)
+        log_action("registration.clearance_override", actor=actor, instance=student, reason=reason,
+                   summary=f"{student.student_number} registered for {semester} without financial clearance")
     is_open, message = window_state(semester, ctx.registration)
     if not is_open and not on_behalf:
         raise DomainError(message, code="window_closed")
@@ -301,7 +317,7 @@ def submit_registration(student, semester, offering_ids, *, actor, on_behalf=Fal
             with transaction.atomic():
                 added.append(CourseRegistration.objects.create(
                     semester_registration=registration, student=student, offering=option.offering,
-                    is_retake=option.is_retake, category=option.category, added_by=actor,
+                    is_retake=option.is_retake, is_repeat=option.is_repeat, category=option.category, added_by=actor,
                 ))
         except IntegrityError:
             raise DomainError("You are already registered for this course.", code="duplicate") from None
@@ -352,3 +368,58 @@ def review_registration(registration, *, approve, actor, comment=""):
                reason=comment or "", summary=f"Registration {registration} {'approved' if approve else 'rejected'}")
     notify_events.registration_reviewed(registration, actor)
     return registration
+
+
+@transaction.atomic
+def withdraw_from_semester(registration, *, reason, actor):
+    """
+    Take a student out of a semester mid-way (deferral, withdrawal, suspension, long illness).
+
+    Courses whose results are still being entered are dropped, so the student leaves those class
+    lists and no lecturer has to enter a mark for them. Marks already entered are kept. Courses whose
+    results have been submitted or published stay on the record. Returns the course codes kept.
+    """
+    from apps.results.models import EDITABLE_SHEET_STATUSES, ResultSheet
+
+    registration = SemesterRegistration.objects.select_for_update().select_related("student", "semester").get(
+        pk=registration.pk)
+    if not (reason or "").strip():
+        raise DomainError("Give a reason for withdrawing the student from the semester.", code="reason_required")
+    if registration.status not in (RegistrationStatus.PENDING, RegistrationStatus.REGISTERED):
+        raise DomainError("This registration is not active.", code="invalid_transition", status_code=409)
+    now = timezone.now()
+    active = list(registration.courses.filter(status=CourseRegistrationStatus.ACTIVE).select_related("offering__course"))
+    locked = set(ResultSheet.objects.filter(offering__in=[c.offering_id for c in active])
+                 .exclude(status__in=EDITABLE_SHEET_STATUSES).values_list("offering_id", flat=True))
+    dropped, kept, events = [], [], []
+    for course in active:
+        if course.offering_id in locked:
+            kept.append(course.offering.course.code)
+            continue
+        course.status, course.dropped_at = CourseRegistrationStatus.DROPPED, now
+        course.save(update_fields=["status", "dropped_at", "updated_at"])
+        dropped.append(course.offering.course.code)
+        events.append(RegistrationEvent(semester_registration=registration, action=RegistrationEvent.Action.COURSE_DROPPED,
+                                        offering=course.offering, actor=actor, on_behalf=True, reason=reason))
+    if not kept:
+        registration.status = RegistrationStatus.CANCELLED
+        registration.save(update_fields=["status", "updated_at"])
+        events.append(RegistrationEvent(semester_registration=registration, action=RegistrationEvent.Action.CANCELLED,
+                                        actor=actor, on_behalf=True, reason=reason))
+    registration.total_credits = sum(c.offering.course.credits for c in active if c.offering.course.code in kept)
+    registration.save(update_fields=["total_credits", "updated_at"])
+    RegistrationEvent.objects.bulk_create(events)
+    log_action("registration.withdrawn", actor=actor, instance=registration, reason=reason,
+               summary=f"{registration.student.student_number} withdrawn from {registration.semester}",
+               metadata={"dropped": dropped, "kept": kept})
+    return kept
+
+
+def withdraw_from_current_semester(student, *, reason, actor):
+    """Used when a student's status changes mid-semester. Returns the kept course codes, or None."""
+    registration = (SemesterRegistration.objects.filter(student=student, semester__is_current=True,
+                                                        status__in=[RegistrationStatus.PENDING, RegistrationStatus.REGISTERED])
+                    .first())
+    if registration is None:
+        return None
+    return withdraw_from_semester(registration, reason=reason, actor=actor)

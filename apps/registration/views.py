@@ -1,4 +1,4 @@
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django_filters import rest_framework as django_filters
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from apps.academics.models import CourseOffering, Semester
 from apps.accounts.models import Role
 from apps.audit.services import log_action
+from apps.finance.models import FinancialClearance
 from apps.students.models import StatusPolicy, Student
 from apps.students.photos import photo_url
 from common import pdf
@@ -17,13 +18,16 @@ from common.tabular import requested_format, table_response
 from common.exceptions import DomainError
 from common.permissions import RoleBasedPermission
 
+from apps.finance import services as finance
+
 from . import bulk, services
 from .models import (
     CourseRegistration, CourseRegistrationStatus, RegistrationEvent, RegistrationStatus, SemesterRegistration,
 )
 from .serializers import (
-    AdminRegistrationSerializer, BulkRegistrationSerializer, BulkReviewSerializer, ReviewSerializer, SemesterRegistrationDetailSerializer,
-    SemesterRegistrationListSerializer, SubmitRegistrationSerializer,
+    AdminRegistrationSerializer, BulkRegistrationSerializer, BulkReviewSerializer, ReviewSerializer,
+    SemesterRegistrationDetailSerializer, SemesterRegistrationListSerializer, SubmitRegistrationSerializer,
+    WithdrawSerializer,
 )
 
 REGISTRY = (Role.ADMIN, Role.REGISTRAR)
@@ -61,6 +65,8 @@ def _options_payload(student, semester):
             "programme": student.programme.name, "level": student.current_level.name, "status": student.status,
         },
         "can_register": ctx.can_register,
+        "financial_clearance": {"required": ctx.profile.require_financial_clearance,
+                                "message": finance.clearance_block(student, semester, ctx.profile)},
         "window_open": is_open,
         "window_message": message,
         "credit_limits": {"min": student.programme.min_credits_per_semester,
@@ -105,6 +111,7 @@ class RegistrationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         "options_for_student": REGISTRY,
         "admin_register": REGISTRY,
         "review": REGISTRY,
+        "withdraw": REGISTRY,
         "bulk_cohort": REGISTRY,
         "bulk_preview": REGISTRY,
         "bulk_confirm": REGISTRY,
@@ -225,6 +232,16 @@ class RegistrationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         return Response(bulk.review_many(queryset, data["ids"], approve=data["action"] == "approve",
                                          actor=request.user, comment=data["reason"]))
 
+    @extend_schema(request=WithdrawSerializer, responses=SemesterRegistrationDetailSerializer)
+    @action(detail=True, methods=["post"])
+    def withdraw(self, request, pk=None):
+        """Take the student off this semester's courses whose results are still open (deferral, withdrawal)."""
+        registration = self.get_object()
+        payload = WithdrawSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        services.withdraw_from_semester(registration, reason=payload.validated_data["reason"], actor=request.user)
+        return Response(SemesterRegistrationDetailSerializer(_detail_queryset().get(pk=registration.pk)).data)
+
     @extend_schema(request=ReviewSerializer, responses=SemesterRegistrationDetailSerializer)
     @action(detail=True, methods=["post"])
     def review(self, request, pk=None):
@@ -278,10 +295,15 @@ class RegistrationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         for key, field in (("programme", "programme"), ("level", "current_level")):
             if request.query_params.get(key):
                 queryset = queryset.filter(**{f"{field}_id": request.query_params[key]})
+        queryset = queryset.annotate(financially_cleared=Exists(FinancialClearance.objects.filter(
+            student=OuterRef("pk"), semester=semester, cleared=True)))
+        if request.query_params.get("cleared") in ("true", "false"):
+            queryset = queryset.filter(financially_cleared=request.query_params["cleared"] == "true")
         page = self.paginate_queryset(queryset)
         return self.get_paginated_response([
             {"id": s.id, "student_number": s.student_number, "full_name": s.full_name, "programme_code": s.programme.code,
-             "level_name": s.current_level.name, "status": s.status, "email": s.email}
+             "level_name": s.current_level.name, "status": s.status, "email": s.email,
+             "financially_cleared": s.financially_cleared}
             for s in page
         ])
 

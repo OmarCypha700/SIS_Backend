@@ -2,6 +2,11 @@
 Progression review: proposes academic standing (good / probation / dismissal) and placement
 (promote / repeat) per student from the configured academic regulations. Nothing is applied
 until the registry applies the review; every individual decision can be overridden or excluded.
+
+A semester has one main review and, after it is applied, any number of follow-up reviews. A
+follow-up picks up outcomes that arrived later: students who were provisional or excluded, and
+students not promoted whose outcome has since changed (a passed resit or deferred examination, a
+result published late, an amendment).
 """
 from django.db import transaction
 from django.utils import timezone
@@ -12,7 +17,7 @@ from apps.institutions.models import AcademicRegulation, InstitutionProfile
 from apps.notifications import events as notify_events
 from apps.registration.models import CourseRegistration, RegistrationStatus, SemesterRegistration
 from apps.results import grading
-from apps.results.models import CourseResult
+from apps.results.models import AmendmentStatus, CourseResult, ResitSheet, ResultAmendment, ResultSheet, SheetStatus
 from apps.students import services as student_services
 from apps.students.models import AcademicStanding, StudentStatus
 from common.exceptions import DomainError
@@ -31,12 +36,24 @@ def next_level(student):
     return levels.filter(order__gt=student.current_level.order).first()
 
 
+def applied_outcomes(student, *, exclude_semester=None):
+    """The decision in force for each semester (the last applied one, follow-ups included), newest first."""
+    decisions = (ProgressionDecision.objects.filter(student=student, applied=True)
+                 .select_related("review__semester").order_by("-review__semester__start_date", "-review__sequence"))
+    if exclude_semester is not None:
+        decisions = decisions.exclude(review__semester=exclude_semester)
+    latest, seen = [], set()
+    for decision in decisions:
+        if decision.review.semester_id not in seen:
+            seen.add(decision.review.semester_id)
+            latest.append(decision)
+    return latest
+
+
 def consecutive_probations(student, before_semester):
     """Probations applied in a row, most recent first, before this semester."""
     count = 0
-    decisions = (ProgressionDecision.objects.filter(student=student, applied=True,
-                                                    review__semester__start_date__lt=before_semester.start_date)
-                 .order_by("-review__semester__start_date"))
+    decisions = [d for d in applied_outcomes(student) if d.review.semester.start_date < before_semester.start_date]
     for decision in decisions:
         if decision.final_standing != Standing.PROBATION:
             break
@@ -46,8 +63,9 @@ def consecutive_probations(student, before_semester):
 
 def evaluate(student, semester, regulation, *, final_term, places=2):
     """Compute the figures and proposed outcome for one student. Returns a dict of decision fields."""
+    # Incomplete results (excused) and results superseded by a repeat year never count.
     results = sorted(
-        CourseResult.objects.filter(student=student, is_published=True,
+        CourseResult.objects.filter(student=student, is_published=True, is_incomplete=False, superseded=False,
                                     offering__semester__start_date__lte=semester.start_date)
         .select_related("offering__semester", "offering__course"),
         key=lambda r: (r.offering.semester.start_date, r.offering.course.code),
@@ -68,12 +86,13 @@ def evaluate(student, semester, regulation, *, final_term, places=2):
     referred = len(failed_now)  # courses failed and not yet passed ("referred")
 
     registered = CourseRegistration.objects.filter(student=student, offering__semester=semester, status="ACTIVE")
-    complete = not registered.exclude(result__is_published=True).exists()
+    complete = not registered.exclude(result__is_published=True, result__is_incomplete=False).exists()
 
     reasons = []
     standing, placement = Standing.GOOD, Placement.STAY
     if not complete:
-        reasons.append("Some results for this semester are not yet published; the decision is provisional.")
+        reasons.append("Some results for this semester are not yet published or are Incomplete; "
+                       "the decision is provisional.")
 
     # Dismissal and probation
     threshold = regulation.dismissal_cgpa_below
@@ -125,7 +144,8 @@ def evaluate(student, semester, regulation, *, final_term, places=2):
         if shortfalls:
             placement = Placement.REPEAT if regulation.repeat_level_when_not_promoted else Placement.STAY
             reasons.append("Not eligible for promotion: " + "; ".join(shortfalls) + ".")
-            if placement == Placement.REPEAT and regulation.dismiss_on_second_repeat and has_repeated_level(student):
+            if (placement == Placement.REPEAT and regulation.dismiss_on_second_repeat
+                    and has_repeated_level(student, exclude_semester=semester)):
                 standing, placement = Standing.DISMISS, Placement.STAY
                 reasons.append(f"Has already repeated {student.current_level.name}; a second repeat leads to withdrawal.")
         elif target is None:
@@ -146,11 +166,54 @@ def evaluate(student, semester, regulation, *, final_term, places=2):
     }
 
 
-def has_repeated_level(student):
-    """True if an applied review already made this student repeat their current level."""
-    return ProgressionDecision.objects.filter(
-        student=student, applied=True, excluded=False, final_placement=Placement.REPEAT, level=student.current_level,
-    ).exists()
+def has_repeated_level(student, *, exclude_semester=None):
+    """True if an earlier semester's decision in force made this student repeat their current level."""
+    return any(d.final_placement == Placement.REPEAT and d.level_id == student.current_level_id
+               for d in applied_outcomes(student, exclude_semester=exclude_semester))
+
+
+def outstanding_work(semester):
+    """Things that can still change this semester's outcomes. Applying before they finish needs confirming."""
+    items = []
+    unpublished = (ResultSheet.objects.filter(offering__semester=semester, offering__registrations__status="ACTIVE")
+                   .exclude(status=SheetStatus.PUBLISHED).distinct().count())
+    never_started = (semester.offerings.filter(registrations__status="ACTIVE", result_sheet__isnull=True)
+                     .distinct().count())
+    if unpublished or never_started:
+        items.append({"kind": "results", "count": unpublished + never_started,
+                      "message": f"{unpublished + never_started} course(s) have results not yet published."})
+    resits_open = ResitSheet.objects.filter(offering__semester=semester).exclude(status=SheetStatus.PUBLISHED).count()
+    if resits_open:
+        items.append({"kind": "resits", "count": resits_open,
+                      "message": f"{resits_open} resit or deferred examination sheet(s) are not yet published."})
+    amendments = ResultAmendment.objects.filter(course_result__offering__semester=semester,
+                                                status=AmendmentStatus.PENDING).count()
+    if amendments:
+        items.append({"kind": "amendments", "count": amendments,
+                      "message": f"{amendments} result amendment(s) are awaiting approval."})
+    incomplete = CourseResult.objects.filter(offering__semester=semester, is_incomplete=True).count()
+    if incomplete:
+        items.append({"kind": "incomplete", "count": incomplete,
+                      "message": f"{incomplete} result(s) are Incomplete, awaiting a deferred examination or the "
+                                 "missing marks."})
+    return items
+
+
+def _latest_review(semester):
+    return ProgressionReview.objects.filter(semester=semester).order_by("-sequence").first()
+
+
+def _follow_up_candidate(student, semester, values):
+    """In a follow-up, include students with no outcome in force, or not promoted whose outcome has changed."""
+    previous = next((d for d in applied_outcomes(student) if d.review.semester_id == semester.id), None)
+    if previous is None:
+        return True
+    if previous.final_placement in (Placement.PROMOTE, Placement.COMPLETE) or previous.final_standing == Standing.DISMISS:
+        return False  # already moved on (or dismissed): changes are handled by the registry
+    if student.current_level_id != previous.level_id:
+        return False  # placement changed by hand since
+    return (values["proposed_standing"], values["proposed_placement"]) != (previous.final_standing,
+                                                                           previous.final_placement)
 
 
 def _suffix(n):
@@ -158,11 +221,20 @@ def _suffix(n):
 
 
 @transaction.atomic
-def generate_review(semester, *, actor):
-    """Create or refresh the draft review. Registry overrides and exclusions are kept."""
-    review = ProgressionReview.objects.select_for_update().filter(semester=semester).first()
+def generate_review(semester, *, actor, follow_up=False):
+    """
+    Create or refresh the semester's draft review. Registry overrides and exclusions are kept.
+    With follow_up, start a follow-up once the latest review has been applied.
+    """
+    list(ProgressionReview.objects.select_for_update().filter(semester=semester))
+    review = _latest_review(semester)
     if review and review.status == ReviewStatus.APPLIED:
-        raise DomainError("This semester's progression review has already been applied.", code="applied", status_code=409)
+        if not follow_up:
+            raise DomainError("This semester's progression review has already been applied. Start a follow-up review "
+                              "for outcomes that arrived since.", code="applied", status_code=409)
+        review = ProgressionReview.objects.create(semester=semester, generated_by=actor, sequence=review.sequence + 1)
+    elif follow_up and review is None:
+        raise DomainError("Prepare and apply the main review first.", code="no_review", status_code=409)
     regulation = AcademicRegulation.load()
     final_term = is_final_term(semester)
     if review is None:
@@ -181,6 +253,8 @@ def generate_review(semester, *, actor):
         if student.status != StudentStatus.ACTIVE:
             continue
         values = evaluate(student, semester, regulation, final_term=final_term)
+        if review.is_follow_up and not _follow_up_candidate(student, semester, values):
+            continue
         decision = previous.get(student.id)
         if decision is None:
             decision = ProgressionDecision(review=review, student=student,
@@ -194,8 +268,8 @@ def generate_review(semester, *, actor):
         decision.save()
         keep.add(student.id)
     review.decisions.exclude(student_id__in=keep).delete()
-    log_action("progression.generated", actor=actor, instance=review, summary=f"Generated progression review for {semester}",
-               metadata={"students": len(keep), "final_term": final_term})
+    log_action("progression.generated", actor=actor, instance=review, summary=f"Generated {review}",
+               metadata={"students": len(keep), "final_term": final_term, "sequence": review.sequence})
     return review
 
 
@@ -236,12 +310,17 @@ def set_excluded(decision, *, excluded, reason, actor):
 
 
 @transaction.atomic
-def apply_review(review, *, actor):
+def apply_review(review, *, actor, acknowledge_outstanding=False):
     """Apply every included decision whose results are complete. Returns counts."""
     review = ProgressionReview.objects.select_for_update().select_related("semester").get(pk=review.pk)
     if review.status != ReviewStatus.DRAFT:
         raise DomainError("This review has already been applied.", code="applied", status_code=409)
-    label = f"Progression review {review.semester}"
+    outstanding = outstanding_work(review.semester)
+    if outstanding and not acknowledge_outstanding:
+        raise DomainError("Some of this semester's outcomes can still change. Confirm to apply anyway; students "
+                          "affected later can be handled in a follow-up review.", code="outstanding_work",
+                          status_code=409, errors=outstanding)
+    label = str(review)
     regulation = AcademicRegulation.load()
     counts = {"applied": 0, "skipped_incomplete": 0, "excluded": 0}
     applied = []
@@ -273,15 +352,31 @@ def apply_review(review, *, actor):
                 if target is not None:
                     student_services.change_placement(student, programme=student.programme, level=target,
                                                       reason=reason, actor=actor)
+                _set_repeating(student, None, reason=reason, actor=actor)
+            elif decision.final_placement == Placement.REPEAT:
+                # The whole level is taken again next year, passed courses included.
+                _set_repeating(student, student.current_level, reason=reason, actor=actor)
         decision.applied = True
         decision.save(update_fields=["applied", "updated_at"])
         applied.append(decision)
         counts["applied"] += 1
     review.status, review.applied_by, review.applied_at = ReviewStatus.APPLIED, actor, timezone.now()
     review.save()
-    log_action("progression.applied", actor=actor, instance=review, summary=f"Applied {label}", metadata=counts)
+    log_action("progression.applied", actor=actor, instance=review, summary=f"Applied {label}",
+               metadata={**counts, "outstanding_acknowledged": [o["kind"] for o in outstanding]})
     notify_events.progression_applied(applied, actor)
     return counts
+
+
+def _set_repeating(student, level, *, reason, actor):
+    if student.repeating_level_id == (level.pk if level else None):
+        return
+    before = student.repeating_level_id
+    student.repeating_level = level
+    student.save(update_fields=["repeating_level", "updated_at"])
+    log_action("student.repeat_set" if level else "student.repeat_cleared", actor=actor, instance=student, reason=reason,
+               before={"repeating_level": before}, after={"repeating_level": level.pk if level else None},
+               summary=f"{student.student_number}: " + (f"repeating {level.name}" if level else "no longer repeating"))
 
 
 def summary(review):

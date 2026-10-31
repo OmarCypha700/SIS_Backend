@@ -18,6 +18,7 @@ from django.db import transaction
 
 from apps.academics.models import CourseCategory, ProgrammeCourse
 from apps.audit.services import log_action
+from apps.finance import services as finance
 from apps.notifications import events as notify_events
 from apps.students.models import StatusPolicy, Student
 from common.exceptions import DomainError
@@ -66,6 +67,10 @@ def _plan(student, semester, extra_ids):
            "adding": [], "skipped": [], "errors": [], "target": []}
     if not ctx.can_register:
         row.update(outcome="blocked", errors=[f"Students with status '{student.get_status_display()}' cannot register."])
+        return row
+    not_cleared = finance.clearance_block(student, semester, ctx.profile)
+    if not_cleared:
+        row.update(outcome="not_cleared", errors=["Not financially cleared for this semester."])
         return row
     registration = ctx.registration
     if registration is not None and registration.status == RegistrationStatus.PENDING:

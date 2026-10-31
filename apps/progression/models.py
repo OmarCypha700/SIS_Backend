@@ -31,7 +31,10 @@ class ProgressionReview(TimeStampedModel):
     then applies them. Nothing changes on a student record until the review is applied.
     """
 
-    semester = models.OneToOneField("academics.Semester", on_delete=models.PROTECT, related_name="progression_review")
+    semester = models.ForeignKey("academics.Semester", on_delete=models.PROTECT, related_name="progression_reviews")
+    # 1 is the main review; later ones are follow-ups for outcomes that arrived after it was applied
+    # (resits, results published late, amendments).
+    sequence = models.PositiveSmallIntegerField(default=1)
     status = models.CharField(max_length=10, choices=ReviewStatus.choices, default=ReviewStatus.DRAFT)
     is_final_term = models.BooleanField(default=False, help_text="Promotion is only considered in the last term of the year.")
     regulation_snapshot = models.JSONField(default=dict, help_text="The regulations used to compute the proposals.")
@@ -40,10 +43,15 @@ class ProgressionReview(TimeStampedModel):
     applied_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-semester__start_date"]
+        ordering = ["-semester__start_date", "-sequence"]
+        constraints = [models.UniqueConstraint(fields=["semester", "sequence"], name="one_review_per_semester_sequence")]
 
     def __str__(self):
-        return f"Progression review {self.semester}"
+        return f"Progression review {self.semester}" + (f" (follow-up {self.sequence - 1})" if self.sequence > 1 else "")
+
+    @property
+    def is_follow_up(self):
+        return self.sequence > 1
 
 
 class ProgressionDecision(TimeStampedModel):

@@ -50,6 +50,8 @@ class CourseRegistration(TimeStampedModel):
     offering = models.ForeignKey("academics.CourseOffering", on_delete=models.PROTECT, related_name="registrations")
     status = models.CharField(max_length=10, choices=CourseRegistrationStatus.choices, default=CourseRegistrationStatus.ACTIVE)
     is_retake = models.BooleanField(default=False)
+    # A course already passed, taken again because the student is repeating the level.
+    is_repeat = models.BooleanField(default=False)
     category = models.CharField(max_length=12, blank=True, help_text="Compulsory/elective at the time of registration.")
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
     dropped_at = models.DateTimeField(null=True, blank=True)

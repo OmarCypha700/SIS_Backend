@@ -16,6 +16,7 @@ from apps.registration import services as registration
 from apps.results import grading, resits
 from apps.results import services as results
 from apps.results.models import CourseResult, ResitEntry
+from common.exceptions import DomainError
 from conftest import client_for, make_student, make_user
 
 pytestmark = pytest.mark.django_db
@@ -288,7 +289,10 @@ def test_incomplete_results_are_not_applied(world, staff):
     review = progression.generate_review(world.semester, actor=staff.registrar)  # MATH101 unpublished
     decision = review.decisions.get(student=world.student)
     assert not decision.results_complete and decision.proposed_standing == "PROBATION"
-    counts = progression.apply_review(review, actor=staff.registrar)
+    with pytest.raises(DomainError) as outstanding:
+        progression.apply_review(review, actor=staff.registrar)
+    assert outstanding.value.code == "outstanding_work" and outstanding.value.errors[0]["kind"] == "results"
+    counts = progression.apply_review(review, actor=staff.registrar, acknowledge_outstanding=True)
     assert counts["skipped_incomplete"] == 2 and counts["applied"] == 0
     world.student.refresh_from_db()
     assert world.student.academic_standing == "GOOD"

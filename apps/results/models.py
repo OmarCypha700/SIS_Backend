@@ -186,13 +186,43 @@ class CourseResult(TimeStampedModel):
     is_amended = models.BooleanField(default=False)
     is_resit = models.BooleanField(default=False, help_text="The grade comes from a resit examination.")
     grade_capped = models.BooleanField(default=False, help_text="The grade was limited by a retake or resit cap.")
+    # Excused absence: no grade yet. Not a pass or a fail, not an attempt, not in the GPA, until it is
+    # completed by a deferred examination or an amendment with the missing marks.
+    is_incomplete = models.BooleanField(default=False)
+    # Replaced by the result of the same course in a year the student repeated. Kept on the record,
+    # never counted.
+    superseded = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["offering__course__code"]
         indexes = [models.Index(fields=["student", "is_published"])]
 
+    @property
+    def counts(self):
+        """Whether the result counts for GPA, credits, attempts and progression."""
+        return not (self.is_incomplete or self.superseded)
+
     def __str__(self):
         return f"{self.student.student_number} {self.offering.course.code}: {self.grade}"
+
+
+INCOMPLETE_GRADE = "I"
+
+
+class Excusal(models.Model):
+    """
+    A student excused from completing a course this semester (illness, bereavement, an approved
+    absence from the examination). The course is recorded as Incomplete instead of being failed.
+    """
+
+    registration = models.OneToOneField("registration.CourseRegistration", on_delete=models.CASCADE,
+                                        related_name="excusal")
+    reason = models.TextField()
+    marked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Excused: {self.registration}"
 
 
 class AmendmentStatus(models.TextChoices):
@@ -270,6 +300,9 @@ class ResitEntry(TimeStampedModel):
     new_grade = models.CharField(max_length=4, blank=True)
     registered_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     registered_at = models.DateTimeField(null=True, blank=True)
+    # A deferred examination for an excused (Incomplete) student: a first sitting, so no resit cap and
+    # it does not count as a resit.
+    is_deferred = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["course_result__student__last_name", "course_result__student__first_name"]

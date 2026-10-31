@@ -12,6 +12,7 @@ from rest_framework.response import Response
 
 from apps.academics.models import CourseOffering, LecturerAssignment
 from apps.accounts.models import STAFF_ROLES, Role
+from apps.finance import services as finance
 from apps.audit.mixins import AuditedModelMixin
 from apps.audit.services import log_action
 from apps.institutions.models import AcademicRegulation, InstitutionProfile
@@ -26,6 +27,7 @@ from . import marks_import, resits, services, signoff
 from .grading import plain
 from .models import CourseResult, GradingScheme, ResitSheet, ResultAmendment, ResultSheet, SheetStatus
 from .serializers import (
+    ExcuseSerializer,
     AmendmentRequestSerializer, AmendmentReviewSerializer, AmendmentSerializer, AssessmentComponentSerializer,
     ComponentsInputSerializer, GradingSchemeSerializer, MarksInputSerializer, ResultSheetEventSerializer,
     MyResitSerializer, OpenResitSerializer, ResitRegisterSerializer, ResitScoresInputSerializer,
@@ -135,7 +137,8 @@ class ResultSheetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
                 "can_publish": user.has_capability("can_publish_results") and sheet.status == SheetStatus.APPROVED and not (
                     profile.publisher_must_differ_from_submitter and sheet.submitted_by_id == user.pk),
                 "can_open_resit": (user.has_any_role(*resits.RESULTS_ROLES) and sheet.status == SheetStatus.PUBLISHED
-                                   and AcademicRegulation.load().resits_enabled
+                                   and (AcademicRegulation.load().resits_enabled
+                                        or sheet.results.filter(is_incomplete=True).exists())
                                    and not ResitSheet.objects.filter(offering=sheet.offering).exists()),
                 "can_request_amendment": user.has_capability("can_request_amendments") and sheet.status == SheetStatus.PUBLISHED and (
                     assigned or not user.teaches_only),
@@ -176,6 +179,20 @@ class ResultSheetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         changed = services.save_marks(sheet, payload.validated_data["marks"], actor=request.user,
                                       source=payload.validated_data["source"])
         return Response({"changed": changed, **self._detail(sheet)})
+
+    @extend_schema(request=ExcuseSerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"])
+    def excuse(self, request, pk=None):
+        """Mark a student excused (Incomplete instead of failed), or remove the excusal."""
+        sheet = self.get_object()
+        payload = ExcuseSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        data = payload.validated_data
+        if data["excused"]:
+            services.excuse(sheet, data["registration"], reason=data.get("reason", ""), actor=request.user)
+        else:
+            services.remove_excusal(sheet, data["registration"], actor=request.user)
+        return Response(self._detail(sheet))
 
     @extend_schema(parameters=[OpenApiParameter("file_format", str, description="csv or xlsx")],
                    responses={200: OpenApiTypes.BINARY})
@@ -300,6 +317,9 @@ class MyResultsViewSet(viewsets.ViewSet):
         if not StatusPolicy.for_status(student.status).can_view_results:
             raise DomainError("Result access is not available for your current academic status. "
                               "Please contact the registry.", code="results_blocked", status_code=403)
+        if finance.results_withheld(student):
+            raise DomainError("Your results are withheld until you are financially cleared for this semester. "
+                              "Please contact the Accounts Office.", code="results_withheld", status_code=403)
         return student
 
     @extend_schema(responses=OpenApiTypes.OBJECT)
@@ -379,6 +399,7 @@ class ResitSheetViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 "student_name": entry.course_result.student.full_name,
                 "status": entry.status,
                 "status_display": entry.get_status_display(),
+                "is_deferred": entry.is_deferred,
                 "original_total": str(entry.original_total),
                 "original_grade": entry.original_grade,
                 "score": str(entry.score) if entry.score is not None else None,
@@ -489,6 +510,9 @@ class MyResitsViewSet(viewsets.ViewSet):
         if not StatusPolicy.for_status(student.status).can_view_results:
             raise DomainError("Result access is not available for your current academic status. "
                               "Please contact the registry.", code="results_blocked", status_code=403)
+        if finance.results_withheld(student):
+            raise DomainError("Your results are withheld until you are financially cleared for this semester. "
+                              "Please contact the Accounts Office.", code="results_withheld", status_code=403)
         return student
 
     @extend_schema(responses=MyResitSerializer(many=True))

@@ -55,6 +55,12 @@ class InstitutionProfile(TimeStampedModel):
         default=False, help_text="Allow exceeding the programme's maximum credits, subject to approval."
     )
     registration_requires_approval = models.BooleanField(default=False)
+    require_financial_clearance = models.BooleanField(
+        default=False, help_text="Students must be cleared by the Accounts Office for the semester before registering.",
+    )
+    withhold_results_until_cleared = models.BooleanField(
+        default=False, help_text="Students not cleared for the current semester cannot see their results.",
+    )
 
     # Results policy
     amendments_require_second_approver = models.BooleanField(

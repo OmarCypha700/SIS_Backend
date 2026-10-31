@@ -15,8 +15,8 @@ from common.exceptions import DomainError
 from . import grading
 from .grading import plain
 from .models import (
-    AmendmentStatus, AssessmentComponent, CourseResult, GradingScheme, ResitEntryStatus, ResultAmendment,
-    ResultSheet, ResultSheetEvent, SheetStatus, StudentMark,
+    INCOMPLETE_GRADE, AmendmentStatus, AssessmentComponent, CourseResult, Excusal, GradingScheme, ResitEntryStatus,
+    ResultAmendment, ResultSheet, ResultSheetEvent, SheetStatus, StudentMark,
 )
 
 HUNDRED = Decimal("100")
@@ -205,10 +205,15 @@ def sheet_rows(sheet):
     bands = _bands(sheet.grading_scheme)
     retake_cap = AcademicRegulation.load().retake_max_grade_point
     stored = {r.registration_id: r for r in sheet.results.all()}
+    excusals = {e.registration_id: e for e in Excusal.objects.filter(registration__in=registrations)}
     rows = []
     for registration in registrations:
         student_marks = marks.get(registration.id, {})
         missing = [c.id for c in components if c.is_required and student_marks.get(c.id) is None]
+        result = stored.get(registration.id)
+        excusal = excusals.get(registration.id)
+        if excusal is not None and result is not None and not result.is_incomplete:
+            excusal = None  # completed since (deferred examination or amendment)
         total = grading.weighted_total(components, student_marks)
         rounded, band = None, None
         if components and student_marks:
@@ -219,19 +224,22 @@ def sheet_rows(sheet):
         capped = False
         if band is not None and registration.is_retake:
             band, capped = grading.cap_band(band, bands, retake_cap)
-        result = stored.get(registration.id)
+        if excusal is not None:
+            band, capped, missing = None, False, []
         rows.append({
             "registration": registration.id,
             "student_id": registration.student_id,
             "student_number": registration.student.student_number,
             "student_name": registration.student.full_name,
             "is_retake": registration.is_retake,
+            "is_repeat": registration.is_repeat,
             "marks": {str(cid): (plain(score) if score is not None else None) for cid, score in student_marks.items()},
             "missing_components": missing,
             "total": str(rounded) if rounded is not None else None,
-            "grade": band.letter if band else None,
-            "grade_point": str(band.grade_point) if band else None,
-            "is_pass": band.is_pass if band else None,
+            "grade": INCOMPLETE_GRADE if excusal else (band.letter if band else None),
+            "grade_point": "0.00" if excusal else (str(band.grade_point) if band else None),
+            "is_pass": None if excusal else (band.is_pass if band else None),
+            "excused": excusal.reason if excusal else None,
             "is_amended": bool(result and result.is_amended),
             "grade_capped": capped,
             "result_id": result.id if result else None,
@@ -240,13 +248,14 @@ def sheet_rows(sheet):
 
 
 def sheet_summary(rows, components):
-    graded = [r for r in rows if r["grade"]]
+    graded = [r for r in rows if r["grade"] and not r.get("excused")]
     distribution = Counter(r["grade"] for r in graded)
     totals = [Decimal(r["total"]) for r in rows if r["total"] is not None]
     return {
         "students": len(rows),
         "complete": sum(1 for r in rows if not r["missing_components"]) if components else 0,
         "missing": sum(1 for r in rows if r["missing_components"]),
+        "incomplete": sum(1 for r in rows if r.get("excused")),
         "passed": sum(1 for r in graded if r["is_pass"]),
         "failed": sum(1 for r in graded if r["is_pass"] is False),
         "average": str((sum(totals) / len(totals)).quantize(Decimal("0.01"))) if totals else None,
@@ -264,8 +273,9 @@ def _store_results(sheet):
     existing = {r.registration_id: r for r in sheet.results.all()}
     for row in rows:
         values = {
-            "total_score": Decimal(row["total"]), "grade": row["grade"], "grade_point": Decimal(row["grade_point"]),
-            "is_pass": row["is_pass"], "credits": credits, "grade_capped": row["grade_capped"],
+            "total_score": Decimal(row["total"] or 0), "grade": row["grade"], "grade_point": Decimal(row["grade_point"]),
+            "is_pass": bool(row["is_pass"]), "credits": credits, "grade_capped": row["grade_capped"],
+            "is_incomplete": bool(row["excused"]),
         }
         result = existing.pop(row["registration"], None)
         if result is None:
@@ -385,9 +395,52 @@ def publish_sheet(sheet, *, actor, comment=""):
     sheet.published_by, sheet.published_at, sheet.last_comment = actor, now, comment
     sheet.save()
     sheet.results.update(is_published=True, published_at=now)
+    _supersede_repeated(sheet)
     _record(sheet, previous, actor, comment, "published")
     notify_events.sheet_published(sheet, actor)
     return sheet
+
+
+def _supersede_repeated(sheet):
+    """A course taken again in a repeat year replaces every earlier result of that course."""
+    repeats = sheet.results.filter(registration__is_repeat=True, is_incomplete=False).values_list("student_id", flat=True)
+    if repeats:
+        CourseResult.objects.filter(student_id__in=list(repeats), offering__course_id=sheet.offering.course_id,
+                                    is_published=True).exclude(sheet=sheet).update(superseded=True)
+
+
+# --- Excused (Incomplete) -----------------------------------------------------
+
+@transaction.atomic
+def excuse(sheet, registration_id, *, reason, actor):
+    """Record a student as excused: the course is Incomplete, not failed, until it is completed."""
+    if not (is_assigned_lecturer(actor, sheet.offering) or actor.has_any_role(Role.ADMIN, Role.RESULTS_OFFICER)):
+        raise forbidden("Only the assigned lecturer or an examinations officer can excuse a student.")
+    _require_editable(sheet)
+    if not (reason or "").strip():
+        raise DomainError("Give the reason the student is excused (e.g. medical certificate, approved absence).",
+                          code="reason_required")
+    registration = _active_registrations(sheet.offering).filter(pk=registration_id).first()
+    if registration is None:
+        raise DomainError("Student not found on this class list.", code="not_found", status_code=404)
+    excusal, created = Excusal.objects.update_or_create(
+        registration=registration, defaults={"reason": reason.strip(), "marked_by": actor})
+    log_action("results.excused", actor=actor, instance=sheet, reason=reason,
+               summary=f"{registration.student.student_number} excused from {sheet.offering.course.code} (Incomplete)",
+               metadata={"registration": registration.pk})
+    return excusal
+
+
+@transaction.atomic
+def remove_excusal(sheet, registration_id, *, actor):
+    if not (is_assigned_lecturer(actor, sheet.offering) or actor.has_any_role(Role.ADMIN, Role.RESULTS_OFFICER)):
+        raise forbidden("Only the assigned lecturer or an examinations officer can change this.")
+    _require_editable(sheet)
+    deleted, _ = Excusal.objects.filter(registration_id=registration_id, registration__offering=sheet.offering).delete()
+    if not deleted:
+        raise DomainError("This student is not excused.", code="not_found", status_code=404)
+    log_action("results.excusal_removed", actor=actor, instance=sheet, summary=f"Excusal removed on {sheet.offering}",
+               metadata={"registration": registration_id})
 
 
 # --- Amendments -------------------------------------------------------------
@@ -503,6 +556,7 @@ def review_amendment(amendment, *, approve, actor, comment=""):
     rounded, band = _capped_grade(result, grading.weighted_total(components, marks), scheme)
     result.total_score, result.grade, result.grade_point, result.is_pass = rounded, band.letter, band.grade_point, band.is_pass
     result.is_amended = True
+    result.is_incomplete = False  # the missing marks are now recorded
     result.save()
     amendment.status = AmendmentStatus.APPLIED
     amendment.save()
@@ -518,7 +572,7 @@ def review_amendment(amendment, *, approve, actor, comment=""):
 
 def student_course_history(student):
     """Course ids the student has passed, failed (not since passed) or has pending results for."""
-    published = (CourseResult.objects.filter(student=student, is_published=True)
+    published = (CourseResult.objects.filter(student=student, is_published=True, is_incomplete=False, superseded=False)
                  .values_list("offering__course_id", "is_pass"))
     passed, failed = set(), set()
     for course_id, is_pass in published:
@@ -542,7 +596,8 @@ def build_academic_record(student, *, published_only=True):
         by_semester[result.offering.semester].append(result)
     for semester in sorted(by_semester, key=lambda s: s.start_date):
         items = by_semester[semester]
-        cumulative.extend(items)
+        counting = [r for r in items if r.counts]
+        cumulative.extend(counting)
         counted = grading.apply_retake_policy(cumulative, profile.cgpa_retake_policy)
         semesters.append({
             "semester_id": semester.id,
@@ -561,10 +616,13 @@ def build_academic_record(student, *, published_only=True):
                 "is_amended": r.is_amended,
                 "is_resit": r.is_resit,
                 "grade_capped": r.grade_capped,
+                "is_repeat": r.registration.is_repeat,
+                "is_incomplete": r.is_incomplete,
+                "superseded": r.superseded,
             } for r in items],
-            "credits_attempted": sum(r.credits for r in items),
-            "credits_earned": sum(r.credits for r in items if r.is_pass),
-            "gpa": _str(grading.gpa(((r.grade_point, r.credits) for r in items), places)),
+            "credits_attempted": sum(r.credits for r in counting),
+            "credits_earned": sum(r.credits for r in counting if r.is_pass),
+            "gpa": _str(grading.gpa(((r.grade_point, r.credits) for r in counting), places)),
             "cgpa": _str(grading.gpa(((r.grade_point, r.credits) for r in counted), places)),
         })
     counted = grading.apply_retake_policy(cumulative, profile.cgpa_retake_policy)

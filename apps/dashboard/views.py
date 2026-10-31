@@ -7,7 +7,8 @@ from rest_framework.views import APIView
 
 from apps.academics.models import CourseOffering, Semester
 from apps.accounts import appointments
-from apps.accounts.models import Role
+from apps.finance import services as finance
+from apps.accounts.models import OVERSIGHT_ROLES, Role
 from apps.audit.models import AuditLog
 from apps.registration.models import CourseRegistration, RegistrationStatus, SemesterRegistration
 from apps.results import signoff
@@ -148,7 +149,8 @@ def _student_dashboard(user, semester):
                              "credits": c.offering.course.credits, "category": c.category} for c in courses],
             }
     policy = StatusPolicy.for_status(student.status)
-    record = build_academic_record(student, published_only=True) if policy.can_view_results else None
+    can_see = policy.can_view_results and not finance.results_withheld(student)
+    record = build_academic_record(student, published_only=True) if can_see else None
     return {
         "kind": "student",
         "current_semester": _semester_payload(semester),
@@ -165,6 +167,19 @@ def _student_dashboard(user, semester):
     }
 
 
+def _accounts_dashboard(semester):
+    from apps.finance.models import FinancialClearance
+
+    data = {"kind": "accounts", "current_semester": _semester_payload(semester), "clearance": None}
+    if semester:
+        allowed = StatusPolicy.objects.filter(can_register=True).values_list("status", flat=True)
+        eligible = Student.objects.filter(is_archived=False, status__in=allowed).count()
+        cleared = FinancialClearance.objects.filter(semester=semester, cleared=True,
+                                                    student__is_archived=False, student__status__in=allowed).count()
+        data["clearance"] = {"eligible": eligible, "cleared": cleared, "not_cleared": eligible - cleared}
+    return data
+
+
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -172,6 +187,8 @@ class DashboardView(APIView):
     def get(self, request):
         semester = Semester.objects.select_related("academic_year").filter(is_current=True).first()
         user = request.user
+        if user.has_any_role(Role.ACCOUNTS_OFFICER) and not user.has_any_role(*OVERSIGHT_ROLES, Role.LECTURER):
+            return Response(_accounts_dashboard(semester))
         if user.teaches_only:
             return Response(_lecturer_dashboard(user, semester))
         if user.has_any_role(Role.ADMIN, Role.REGISTRAR):

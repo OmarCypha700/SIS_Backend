@@ -14,7 +14,7 @@ from common.permissions import RoleBasedPermission
 from . import services
 from .models import ProgressionDecision, ProgressionReview
 from .serializers import (
-    ExcludeSerializer, GenerateReviewSerializer, OverrideSerializer, ProgressionDecisionSerializer,
+    ApplyReviewSerializer, ExcludeSerializer, GenerateReviewSerializer, OverrideSerializer, ProgressionDecisionSerializer,
     ProgressionReviewSerializer,
 )
 
@@ -31,11 +31,14 @@ class ProgressionReviewViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     def get_queryset(self):
         return (ProgressionReview.objects.select_related("semester__academic_year", "generated_by", "applied_by")
-                .annotate(decision_count=Count("decisions")).order_by("-semester__start_date"))
+                .annotate(decision_count=Count("decisions")).order_by("-semester__start_date", "-sequence"))
 
     def _detail(self, review):
         review = self.get_queryset().get(pk=review.pk)
-        return {**ProgressionReviewSerializer(review).data, "summary": services.summary(review)}
+        latest = services._latest_review(review.semester)
+        return {**ProgressionReviewSerializer(review).data, "summary": services.summary(review),
+                "outstanding": services.outstanding_work(review.semester),
+                "can_follow_up": review.status == "APPLIED" and latest.pk == review.pk}
 
     @extend_schema(responses=OpenApiTypes.OBJECT)
     def retrieve(self, request, pk=None):
@@ -49,14 +52,17 @@ class ProgressionReviewViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         semester = Semester.objects.filter(pk=payload.validated_data["semester"]).first()
         if semester is None:
             raise DomainError("Semester not found.", code="not_found", status_code=404)
-        review = services.generate_review(semester, actor=request.user)
+        review = services.generate_review(semester, actor=request.user,
+                                          follow_up=payload.validated_data["follow_up"])
         return Response(self._detail(review), status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @extend_schema(request=ApplyReviewSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["post"])
     def apply(self, request, pk=None):
         review = self.get_object()
-        counts = services.apply_review(review, actor=request.user)
+        payload = ApplyReviewSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        counts = services.apply_review(review, actor=request.user, **payload.validated_data)
         return Response({**self._detail(review), "applied_counts": counts})
 
 

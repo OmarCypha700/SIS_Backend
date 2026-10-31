@@ -138,7 +138,8 @@ def registration_slip(registration):
     story.append(Spacer(1, 5 * mm))
     story.append(_data_table(
         ["Code", "Course", "Category", "Credits"],
-        [[c.offering.course.code, c.offering.course.title + (" (retake)" if c.is_retake else ""),
+        [[c.offering.course.code, c.offering.course.title + (" (retake)" if c.is_retake else "")
+          + (" (repeat year)" if c.is_repeat else ""),
           c.category.title(), c.offering.course.credits] for c in courses],
         [25 * mm, 95 * mm, 30 * mm, 20 * mm], align_right=(3,),
         footer=["", "Total credits", "", registration.total_credits],
@@ -152,8 +153,10 @@ def registration_slip(registration):
 def _semester_table(semester):
     rows = []
     for c in semester["courses"]:
-        notes = [n for n, flag in (("retake", c["is_retake"]), ("resit", c.get("is_resit")),
-                                   ("capped", c.get("grade_capped")), ("amended", c["is_amended"]),
+        notes = [n for n, flag in (("retake", c["is_retake"]), ("repeat year", c.get("is_repeat")),
+                                   ("resit", c.get("is_resit")), ("capped", c.get("grade_capped")),
+                                   ("amended", c["is_amended"]), ("incomplete", c.get("is_incomplete")),
+                                   ("superseded by repeat, not counted", c.get("superseded")),
                                    ("unpublished", c.get("is_published") is False)) if flag]
         rows.append([c["course_code"], c["course_title"] + (f" ({', '.join(notes)})" if notes else ""),
                      c["credits"], c["total"], c["grade"], c["grade_point"]])

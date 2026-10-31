@@ -63,6 +63,37 @@ A failed course can be re-registered in a later semester when it is offered (and
 registration, counts against the attempt limit, and is graded with the retake cap. The CGPA uses
 the institution's retake policy (latest, best or all attempts).
 
+## Repeating a level
+
+When an applied progression review gives a student **Repeat level**, the student stays at that
+level and is marked as repeating it. During the repeat year:
+
+* every course of the level is open again, **passed courses included**; compulsory courses are
+  compulsory again, so the whole year is registered (by the student or by bulk registration);
+* passed courses taken again show as **Repeat year**, failed ones as **Retake** (the retake grade cap
+  applies to retakes only);
+* when a repeat-year result is published, the earlier result of that course is marked **Superseded
+  by repeat**: it stays on the record and transcript but no longer counts towards the GPA, credits,
+  attempts or progression, whatever the CGPA retake policy;
+* promotion at the end of the repeat year ends the repeat. A second repeat of the same level is a
+  withdrawal under *Dismissal on a second repeat*.
+
+## Students who cannot finish a course
+
+* **Excused (Incomplete).** On the result sheet the lecturer (or an examinations officer) can
+  *Excuse* a student with a reason, for example a medical certificate. The course is recorded as
+  **I – Incomplete**: not a pass or a fail, not an attempt, not in the GPA, and the sheet can be
+  submitted without that student's missing marks. Progression treats the student as provisional.
+* **Completing it.** Either open the resit for the course: excused students are added automatically
+  as **deferred examination** candidates (a first sitting: no resit cap, not counted as a resit,
+  allowed even when resits are switched off; one who does not sit stays Incomplete). Or request an
+  amendment with the missing marks.
+* **Withdrawing mid-semester.** For a deferral, withdrawal or suspension during the semester, the
+  registry uses *Withdraw from semester* on the registration (or ticks the option when changing the
+  student's status). Courses whose results are still being entered are dropped, so the student
+  leaves those class lists; marks already entered are kept; courses already submitted or published
+  stay on the record. With nothing left, the registration is cancelled.
+
 ## Resits (supplementary examinations)
 
 1. **Open** – after a course's results are published, an examinations officer, registrar or
@@ -102,9 +133,24 @@ amendment process.
 
 Nothing in a review changes a student record until it is applied.
 
+**Before applying**, the review lists anything that can still change the semester's outcomes:
+results not yet published, resit or deferred-examination sheets not published, amendments awaiting
+approval and Incomplete results. Applying then needs confirming.
+
+**Follow-up reviews.** An applied review cannot be re-run, but *Start follow-up review* prepares a
+new one for the same semester with only the students whose outcome arrived later: those who were
+provisional or excluded, and those not promoted whose result has since changed (a passed resit or
+deferred examination, a late result, an amendment). It is reviewed and applied like the main one.
+Students already promoted or dismissed are not reconsidered automatically; the registry handles
+those by changing placement or status with a reason. Repeat and probation counts always use the
+outcome in force for each semester, so a repeat later turned into a promotion by a follow-up is
+not counted as a repeat.
+
 ## Not covered yet
 
 * Different regulations per programme (one set per installation today).
 * Graduation and classification of awards.
 * Automatic generation of resit timetables or notifications to students.
 * Reinstatement workflows after dismissal (use *Change status* with a reason).
+* Reversing a promotion automatically when a result is later lowered (the registry changes the
+  placement by hand; the amendment and the change are both audited).

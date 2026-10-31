@@ -62,6 +62,7 @@ environment variable before seeding). They exist only in your local database.
 | Administrator | admin@northridge.example |
 | Registrar | registrar@northridge.example |
 | Results officer | exams@northridge.example |
+| Accounts officer | accounts@northridge.example |
 | Lecturer | lecturer@northridge.example |
 | Student | student@northridge.example |
 

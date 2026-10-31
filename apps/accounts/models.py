@@ -9,10 +9,11 @@ class Role(models.TextChoices):
     REGISTRAR = "REGISTRAR", "Registrar"
     LECTURER = "LECTURER", "Lecturer"
     RESULTS_OFFICER = "RESULTS_OFFICER", "Results Officer"
+    ACCOUNTS_OFFICER = "ACCOUNTS_OFFICER", "Accounts Officer"
     STUDENT = "STUDENT", "Student"
 
 
-STAFF_ROLES = (Role.ADMIN, Role.REGISTRAR, Role.LECTURER, Role.RESULTS_OFFICER)
+STAFF_ROLES = (Role.ADMIN, Role.REGISTRAR, Role.LECTURER, Role.RESULTS_OFFICER, Role.ACCOUNTS_OFFICER)
 ACADEMIC_ADMIN_ROLES = (Role.ADMIN, Role.REGISTRAR)
 # Staff who can be assigned courses and then act as the lecturer for those courses.
 TEACHING_ROLES = (Role.LECTURER, Role.REGISTRAR, Role.RESULTS_OFFICER)
@@ -25,6 +26,7 @@ class Office(models.TextChoices):
 
     REGISTRAR = "REGISTRAR", "Registrar"
     RESULTS_OFFICER = "RESULTS_OFFICER", "Results Officer"
+    ACCOUNTS_OFFICER = "ACCOUNTS_OFFICER", "Accounts Officer"
 
 # Privileged result capabilities. They are explicit per-user flags so an institution can
 # separate approval from publication; these are only the defaults applied at creation.
@@ -47,6 +49,9 @@ DEFAULT_CAPABILITIES = {
                            "can_request_amendments": True, "can_approve_amendments": False},
     Role.LECTURER: {"can_approve_results": False, "can_publish_results": False,
                     "can_request_amendments": True, "can_approve_amendments": False},
+    # Financial clearance only; no result permissions.
+    Role.ACCOUNTS_OFFICER: {"can_approve_results": False, "can_publish_results": False,
+                            "can_request_amendments": False, "can_approve_amendments": False},
     Role.STUDENT: {},
 }
 # What holding an office grants, for as long as the appointment lasts. Transcript issuing is never

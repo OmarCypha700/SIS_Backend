@@ -18,6 +18,7 @@ class Kind(models.TextChoices):
     STATUS_CHANGED = "STATUS_CHANGED", "Status changed"
     SIGNOFF_BLOCKED = "SIGNOFF_BLOCKED", "Sign-off needs attention"
     APPOINTMENT = "APPOINTMENT", "Appointment"
+    FINANCIAL_CLEARANCE = "FINANCIAL_CLEARANCE", "Financial clearance"
     TEST = "TEST", "Test notification"
 
 

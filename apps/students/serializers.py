@@ -47,10 +47,10 @@ class StudentSerializer(PhotoUrlsMixin, serializers.ModelSerializer):
             "gender", "email", "phone", "residential_address", "emergency_contact_name", "emergency_contact_phone",
             "emergency_contact_relationship", "admission_date", "admission_year", "entry_academic_year",
             "programme", "programme_code", "programme_name", "current_level", "level_name", "status",
-            "status_display", "academic_standing", "photo_url", "thumbnail_url", "is_archived", "is_active",
-            "password", "created_at", "updated_at",
+            "status_display", "academic_standing", "repeating_level", "photo_url", "thumbnail_url", "is_archived",
+            "is_active", "password", "created_at", "updated_at",
         ]
-        read_only_fields = ["is_archived", "academic_standing", "created_at", "updated_at"]
+        read_only_fields = ["is_archived", "academic_standing", "repeating_level", "created_at", "updated_at"]
 
     def get_fields(self):
         fields = super().get_fields()
@@ -131,6 +131,8 @@ class StudentSelfSerializer(PhotoUrlsMixin, serializers.ModelSerializer):
 class StatusChangeSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=StudentStatus.choices)
     reason = serializers.CharField(max_length=2000)
+    withdraw_from_semester = serializers.BooleanField(
+        default=False, help_text="Also take the student off this semester's courses whose results are still open.")
 
 
 class PlacementChangeSerializer(serializers.Serializer):
