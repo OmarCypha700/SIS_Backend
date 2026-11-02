@@ -35,14 +35,17 @@ def sheet_submitted(sheet, actor):
 
 
 def signoff_check(sheet, offering, link):
-    """Tell administrators when nobody but the submitter can approve or publish this sheet."""
+    """
+    Tell administrators when nobody but the submitter can approve or publish this sheet. In-app and
+    push only: the dashboard also shows it, and it can repeat for every sheet until permissions change.
+    """
     from apps.results import signoff
 
     warnings = signoff.gaps(sheet)
     if not warnings:
         return
     admins = list(User.objects.filter(is_active=True, role="ADMIN"))
-    notify(admins, kind=Kind.SIGNOFF_BLOCKED, title=f"Sign-off blocked: {offering.course.code}",
+    notify(admins, kind=Kind.SIGNOFF_BLOCKED, email=False, title=f"Sign-off blocked: {offering.course.code}",
            body=" ".join(w["message"] for w in warnings), link=link)
 
 
@@ -146,7 +149,8 @@ def appointment_changed(appointment, actor, *, started):
 # --- Registration, teaching, students ----------------------------------------------------
 
 def registration_pending(registration, actor):
-    notify(registry_staff(), kind=Kind.REGISTRATION_PENDING, actor=actor,
+    """In-app and push only: during registration week one email per student would use up the allowance."""
+    notify(registry_staff(), kind=Kind.REGISTRATION_PENDING, actor=actor, email=False,
            title=f"Registration awaiting approval: {registration.student.student_number}",
            body=f"A course registration for {registration.semester} needs approval.",
            link=f"/registrations/{registration.pk}")

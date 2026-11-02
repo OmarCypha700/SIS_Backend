@@ -10,7 +10,9 @@ for correction, or a registration to approve, the system tells them in three way
 | **Email** | Staff only (alerts); anyone (password reset, account set-up) | Counts against the daily email allowance |
 
 Students never get alert emails. A single results publication can reach hundreds of students, which
-would use up a free email plan in one action. They get in-app and push notifications instead.
+would use up a free email plan in one action. They get in-app and push notifications instead. For the
+same reason, staff get no email for registrations waiting for approval (one per student during
+registration week) or for blocked sign-offs (shown on the administrator's dashboard).
 
 ## Events
 
@@ -24,10 +26,11 @@ would use up a free email plan in one action. They get in-app and push notificat
 | Amendment approved or rejected | The requester |
 | Resit opened | The lecturers; eligible students (in-app and push) |
 | Resit submitted, returned, approved or published | As for result sheets; students when their resit result is published |
-| Registration needs approval | Registrars (administrators if there is no registrar) |
+| Registration needs approval | Registrars (administrators if there is no registrar), in-app and push only |
 | Registration approved or rejected | The student |
 | Lecturer assigned to a course | That lecturer |
 | Progression review applied, or student status changed | The student (in-app and push) |
+| Sign-off blocked: only the submitter could approve or publish | Administrators, in-app and push only (also shown on the dashboard) |
 
 The person who performed the action is never notified about it. Messages contain course codes and
 what happened, **never marks, grades or personal details**, because notifications appear on lock

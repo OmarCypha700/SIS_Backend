@@ -258,6 +258,17 @@ def test_staff_import_reports_waiting_setup_emails(settings, admin_user, django_
     assert len(mail.outbox) == 1 and "Choose your password" in mail.outbox[0].body
 
 
+def test_registrations_awaiting_approval_send_no_email(world):
+    # One per student during registration week: in-app and push only, so the email allowance is kept.
+    from apps.notifications import events
+
+    registrar = make_user(Role.REGISTRAR)
+    reg = register(world, world.student, world.semester, ["CS101", "MATH101"])
+    events.registration_pending(reg, actor=world.student.user)
+    assert titles(registrar) == [f"Registration awaiting approval: {world.student.student_number}"]
+    assert not OutgoingMessage.objects.filter(recipient=registrar, channel=Channel.EMAIL).exists()
+
+
 def test_lecturer_hears_about_a_new_teaching_assignment(world, admin_user):
     offering = world.offerings["CS105"]
     response = client_for(admin_user).put(f"/api/v1/course-offerings/{offering.pk}/lecturers/",

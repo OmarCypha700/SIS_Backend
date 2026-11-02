@@ -3,7 +3,7 @@ import pytest
 
 from apps.accounts.models import Role
 from apps.institutions.models import InstitutionProfile
-from apps.notifications.models import Kind, Notification
+from apps.notifications.models import Channel, Kind, Notification, OutgoingMessage
 from apps.progression.tests.test_regulations import register
 from apps.results import services as results
 from apps.results import signoff
@@ -40,6 +40,8 @@ def test_warns_and_alerts_admins_when_only_the_submitter_can_approve(world, admi
     assert "No one other than" in warnings[0]["message"] and "Can approve results" in warnings[0]["message"]
     alert = Notification.objects.get(recipient=admin_user, kind=Kind.SIGNOFF_BLOCKED)
     assert alert.link == f"/results/sheets/{sheet.pk}"
+    # In-app and push only: no email for this alert.
+    assert not OutgoingMessage.objects.filter(notification=alert, channel=Channel.EMAIL).exists()
 
     detail = client_for(tutor).get(f"/api/v1/result-sheets/{sheet.pk}/").data
     assert detail["signoff_warnings"] == warnings and detail["permissions"]["can_approve"] is False
