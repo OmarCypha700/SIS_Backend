@@ -37,7 +37,18 @@ ABANDON_AFTER = datetime.timedelta(hours=24)
 
 
 class GatewayError(Exception):
-    pass
+    def __init__(self, message, *, status=None):
+        super().__init__(message)
+        self.status = status
+
+    @property
+    def rejected_key(self):
+        return self.status == 401
+
+
+KEY_HELP = ("the payment provider rejected PAYSTACK_SECRET_KEY. Use the secret key (sk_test_... or sk_live_...), "
+            "not the public key (pk_...), with no quotes or spaces, from the same mode (test or live) as the "
+            "dashboard you copied it from; then reload the web app. Run `manage.py check_payment_setup` to test it.")
 
 
 def configured():
@@ -94,7 +105,8 @@ def _call(method, path, **kwargs):
     except ValueError:
         body = {}
     if response.status_code >= 400 or not body.get("status"):
-        raise GatewayError(body.get("message") or f"Payment service error {response.status_code}")
+        raise GatewayError(body.get("message") or f"Payment service error {response.status_code}",
+                           status=response.status_code)
     return body.get("data") or {}
 
 
@@ -125,6 +137,10 @@ def start_payment(student, amount, *, actor):
     except GatewayError as exc:
         payment.status, payment.gateway_message = PaymentStatus.FAILED, str(exc)[:255]
         payment.save(update_fields=["status", "gateway_message", "updated_at"])
+        if exc.rejected_key:
+            log.error("Online payment is misconfigured (%s): %s", payment.reference, KEY_HELP)
+            raise DomainError("Online payment is not available at the moment. Please try again later, or pay at the "
+                              "bank or the Accounts Office.", code="payments_unavailable", status_code=503) from None
         log.warning("Paystack initialize failed for %s: %s", payment.reference, exc)
         raise DomainError("The payment service is not responding. Please try again in a few minutes.",
                           code="gateway_unavailable", status_code=502) from None
@@ -155,6 +171,8 @@ def confirm(reference, *, actor=None):
     try:
         data = _call("GET", f"/transaction/verify/{reference}")
     except GatewayError as exc:
+        if exc.rejected_key:
+            log.error("Could not check payment %s: %s", reference, KEY_HELP)
         Payment.objects.filter(pk=payment.pk).update(last_checked_at=timezone.now(), gateway_message=str(exc)[:255])
         payment.refresh_from_db()
         return payment
@@ -231,3 +249,20 @@ def reconcile(now=None):
                                        created_at__lt=now - ABANDON_AFTER).update(status=PaymentStatus.ABANDONED,
                                                                                   updated_at=now)
     return {"checked": checked, "succeeded": succeeded, "abandoned": abandoned}
+
+
+def check_setup():
+    """Ask the provider whether the configured key works. Returns (ok, message) for the IT administrator."""
+    if not configured():
+        return False, "PAYSTACK_SECRET_KEY is not set, so online payment is off."
+    key = settings.PAYSTACK_SECRET_KEY
+    if key.startswith("pk_"):
+        return False, "PAYSTACK_SECRET_KEY holds the public key (pk_...). Use the secret key (sk_...)."
+    try:
+        _call("GET", "/transaction", params={"perPage": 1})
+    except GatewayError as exc:
+        if exc.rejected_key:
+            return False, f"Not working: {KEY_HELP}"
+        return False, f"Could not check the key: {exc}"
+    mode = "TEST mode (no real money)" if key.startswith("sk_test_") else "LIVE mode (real payments)"
+    return True, f"The key works. Online payment is in {mode}."

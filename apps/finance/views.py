@@ -179,7 +179,10 @@ class FeeScheduleViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = (FeeSchedule.objects.select_related("programme", "level", "academic_year", "semester")
                     .prefetch_related("items")
-                    .annotate(billed_students=Count("items__entries__student", distinct=True)))
+                    .annotate(billed_students=Count("items__entries__student", distinct=True))
+                    # The model's default ordering is dropped by the GROUP BY above: page through in a fixed order.
+                    .order_by("-academic_year__start_date", "semester__term_number", "programme__code", "level__order",
+                              "pk"))
         params = self.request.query_params
         for key in ("academic_year", "semester", "programme", "level"):
             if params.get(key):

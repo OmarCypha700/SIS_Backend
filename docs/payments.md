@@ -102,6 +102,11 @@ reduce what was paid.
      PAYSTACK_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxx
      ```
    * Reload the web app. `api.paystack.co` is on PythonAnywhere's free-account allowlist.
+   * Check it from a Bash console:
+     ```bash
+     cd ~/sis-backend && ~/.virtualenvs/sis/bin/python manage.py check_payment_setup --settings=config.settings.prod
+     ```
+     It says whether the key works and whether you are in test or live mode.
 3. **Webhook URL.** On the same Paystack page, set the webhook URL to
    `https://<your-backend>/api/v1/payments/paystack/webhook/`
    (for example `https://yourname.pythonanywhere.com/api/v1/payments/paystack/webhook/`). The webhook
@@ -139,3 +144,16 @@ credited to the wrong student, reverse it on that student's account and record i
 * **Recorded by hand, then on the statement.** Use the bank's own slip number when recording by hand;
   the statement row is then *Already recorded*. If a different number was used, the row shows as a
   *Possible duplicate* and is not recorded unless you tick it.
+
+## Troubleshooting
+
+* **Server log: "Online payment is misconfigured … rejected PAYSTACK_SECRET_KEY"** (Paystack answered
+  *Invalid key*). Students see "Online payment is not available at the moment". Check that:
+  * the value is the **secret** key (`sk_test_…` or `sk_live_…`), not the public key (`pk_…`);
+  * it was copied whole, from the same mode (Test or Live) as the dashboard you are looking at;
+  * it is in the `.env` of the project folder the web app runs from;
+  * you **reloaded the web app** after editing `.env`.
+
+  Then run `manage.py check_payment_setup` (above) until it says the key works.
+* **"The payment service is not responding"**: Paystack could not be reached or returned an error. Try
+  again later; payments left pending are checked by the daily task.
