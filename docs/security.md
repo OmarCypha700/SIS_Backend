@@ -47,9 +47,18 @@
 * Object scope is enforced in querysets: students only see their own records; lecturers only see
   offerings they are assigned to and students registered on them; out-of-scope ids return 404.
 * Lecturers and results officers receive a reduced student serializer without personal details.
-* **Accounts Officer** (role, or an appointed office): sees only the financial-clearance list (student
-  number, name, programme, level, status, clearance and note). No results, contact details, photos
-  or student records. Every clearance and revocation is audited per student. When the institution
+* **Accounts Officer** (role, or an appointed office): sees the financial-clearance list and the fees
+  pages (fee schedules, student accounts, payments): student number, name, programme, level, status,
+  balances and payments. No results, contact details, photos or student records. Every clearance,
+  revocation, bill, payment, waiver, refund and reversal is audited per student. Fee ledgers are
+  append-only: mistakes are corrected with a reversing entry, never edited or deleted.
+* **Online payments (Paystack).** Students pay on Paystack's hosted page, so card numbers and MoMo
+  PINs never reach the system; only the channel, bank and brand are kept. A payment is credited only
+  after the server has verified it with Paystack and the reference, currency (GHS) and amount all
+  match; anything else is held as *Needs attention* and not credited. The webhook checks Paystack's
+  HMAC-SHA512 signature, and confirming the same payment twice credits it once (row lock). Students
+  can see and check only their own payments; another reference returns 404. The secret key lives
+  only in the server's `.env`. When the institution
   requires clearance, only an administrator registering on the student's behalf can override it, and
   the override is audited.
 * **One account per person; offices through appointments.** Each person has their own role

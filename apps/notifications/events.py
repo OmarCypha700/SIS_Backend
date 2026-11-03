@@ -169,6 +169,23 @@ def financially_cleared(students, semester, actor):
            body="You can now register your courses.", link="/registration")
 
 
+def payment_received(payment):
+    """In-app and push only. Amounts appear in the app, not on the lock screen."""
+    notify([payment.student.user], kind=Kind.PAYMENT_RECEIVED, email=False,
+           title=f"Payment received: receipt {payment.receipt_number}",
+           body="Your payment has been added to your fees account.", link="/fees")
+
+
+def payment_attention(payment):
+    """A payment Paystack reported differently from what was expected: finance staff check it."""
+    from apps.accounts.models import Role
+
+    staff = list(User.objects.holding(Role.ACCOUNTS_OFFICER)) or list(User.objects.filter(is_active=True, role=Role.ADMIN))
+    notify(staff, kind=Kind.PAYMENT_ATTENTION, email=False, title=f"Payment needs checking: {payment.reference}",
+           body="The payment service reported a different amount or currency. It was not credited.",
+           link="/finance/payments?status=MISMATCH")
+
+
 def registered_by_registry(students, semester, actor):
     """Bulk registration: in-app and push only, so a large cohort never uses the email allowance."""
     notify(student_users(students), kind=Kind.REGISTRATION_REVIEWED, actor=actor, email=False,

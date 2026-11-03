@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
@@ -13,6 +15,11 @@ class CgpaRetakePolicy(models.TextChoices):
     LATEST = "LATEST", "Latest attempt counts"
     BEST = "BEST", "Best attempt counts"
     ALL = "ALL", "All attempts count"
+
+
+class FeeBillingPeriod(models.TextChoices):
+    SEMESTER = "SEMESTER", "Each semester"
+    ACADEMIC_YEAR = "ACADEMIC_YEAR", "Each academic year"
 
 
 class InstitutionProfile(TimeStampedModel):
@@ -60,6 +67,29 @@ class InstitutionProfile(TimeStampedModel):
     )
     withhold_results_until_cleared = models.BooleanField(
         default=False, help_text="Students not cleared for the current semester cannot see their results.",
+    )
+
+    # School fees
+    fee_billing_period = models.CharField(
+        max_length=14, choices=FeeBillingPeriod.choices, default=FeeBillingPeriod.SEMESTER,
+        help_text="Whether fee schedules bill each semester or the whole academic year.",
+    )
+    registration_payment_percent = models.PositiveSmallIntegerField(
+        default=60, validators=[MaxValueValidator(100)],
+        help_text="Share of the current bill a student must have paid to be cleared automatically. Earlier "
+                  "balances must be paid in full.",
+    )
+    online_payments_enabled = models.BooleanField(
+        default=False, help_text="Students can pay fees online (the payment service must be set up on the server).",
+    )
+    payment_fee_percent = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal("1.95"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("10"))],
+        help_text="Payment provider's charge, added on top of the fees so the institution receives the full amount.",
+    )
+    payment_fee_cap = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(Decimal("0"))],
+        help_text="Largest transaction fee for one payment, if the provider caps it. Blank: no cap.",
     )
 
     # Results policy

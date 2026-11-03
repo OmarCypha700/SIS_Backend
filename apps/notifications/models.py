@@ -19,6 +19,8 @@ class Kind(models.TextChoices):
     SIGNOFF_BLOCKED = "SIGNOFF_BLOCKED", "Sign-off needs attention"
     APPOINTMENT = "APPOINTMENT", "Appointment"
     FINANCIAL_CLEARANCE = "FINANCIAL_CLEARANCE", "Financial clearance"
+    PAYMENT_RECEIVED = "PAYMENT_RECEIVED", "Payment received"
+    PAYMENT_ATTENTION = "PAYMENT_ATTENTION", "Payment needs attention"
     TEST = "TEST", "Test notification"
 
 

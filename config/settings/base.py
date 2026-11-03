@@ -122,6 +122,10 @@ MAX_UPLOAD_CSV_BYTES = 5 * 1024 * 1024  # CSV and Excel imports
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+
+# Online fee payment (Paystack). Blank key: online payment is off. Test keys start sk_test_.
+PAYSTACK_SECRET_KEY = env("PAYSTACK_SECRET_KEY", default="")
+PAYSTACK_BASE_URL = env("PAYSTACK_BASE_URL", default="https://api.paystack.co")
 DJANGO_ADMIN_ENABLED = env.bool("DJANGO_ADMIN_ENABLED", default=False)
 
 # --- Sessions, CSRF, CORS -------------------------------------------------

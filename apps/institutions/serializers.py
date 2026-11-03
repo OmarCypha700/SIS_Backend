@@ -20,11 +20,31 @@ class InstitutionProfileSerializer(serializers.ModelSerializer):
     # The signature and seal are private files, managed through /institution/transcript-images/.
     has_transcript_signature = serializers.SerializerMethodField()
     has_transcript_seal = serializers.SerializerMethodField()
+    payment_gateway_configured = serializers.SerializerMethodField()
 
     class Meta:
         model = InstitutionProfile
         exclude = ["id", "transcript_signature", "transcript_seal"]
         read_only_fields = ["created_at", "updated_at"]
+
+    def to_internal_value(self, data):
+        # The settings form is multipart, where a cleared field arrives as "": that means "no cap".
+        if hasattr(data, "get") and data.get("payment_fee_cap") == "":
+            data = data.copy()
+            data["payment_fee_cap"] = None
+        return super().to_internal_value(data)
+
+    def get_payment_gateway_configured(self, obj) -> bool:
+        from apps.finance import paystack
+
+        return paystack.configured()
+
+    def validate_online_payments_enabled(self, value):
+        from apps.finance import paystack
+
+        if value and not paystack.configured():
+            raise serializers.ValidationError("Online payment has not been set up on the server yet. Ask your system administrator.")
+        return value
 
     def get_has_transcript_signature(self, obj) -> bool:
         return bool(obj.transcript_signature)

@@ -91,14 +91,24 @@
 * **Financial clearance** – an Accounts Officer role clears students per semester (one by one, in
   bulk or from a spreadsheet). When the institution turns it on, students cannot register until
   cleared, and results can optionally be withheld until then.
-* **Quality** – 251 backend tests and 31 Playwright end-to-end journeys passing; ESLint clean;
+* **Quality** – 273 backend tests and the Playwright end-to-end journeys passing; ESLint clean;
   `check --deploy` clean apart from opt-in HSTS preload; `pip-audit` and `npm audit` clean.
+
+* **School fees and online payment** (see [payments.md](payments.md)): fee schedules per programme,
+  level and semester or academic year; billing a whole class with a preview; an append-only ledger per
+  student (charges, payments, waivers, refunds, reversals); payments online through Paystack (mobile
+  money, card, bank) with the transaction fee added on top, or recorded by the Accounts Office or
+  imported from a bank statement; receipts and statements as PDF. A student is cleared automatically
+  once earlier balances are paid and the set share (60% by default) of the current bill is paid.
 
 ## Known limitations
 
 * iPhone HEIC photos are not accepted; save them as JPG first. The photo crop is centred and
   does not detect faces.
 
+* Online payment has been tested against a simulated Paystack only. Try it with your Paystack test
+  keys (mobile money, card and bank) before switching to live keys. Refunds of online payments are made
+  from the Paystack dashboard and then recorded in the student's account.
 * Push notifications, the app-icon badge and Brevo delivery have been tested with mocks and in desktop
   Chromium only. Check them on real Android and iPhone devices, and with your Brevo account, before
   rollout.

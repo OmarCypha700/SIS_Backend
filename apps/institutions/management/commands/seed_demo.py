@@ -7,6 +7,7 @@ database that holds real student records.
 import datetime
 import os
 import random
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -210,6 +211,31 @@ class Command(BaseCommand):
             chosen += [o.offering.pk for o in options if not o.is_compulsory][:1]
             if chosen:
                 submit_registration(student, current, chosen, actor=student.user)
+
+        self._fees(current, programmes, levels, [s for s, _ in students])
+
+    @staticmethod
+    def _fees(semester, programmes, levels, students):
+        """This semester's fees, billed; some students paid in full, some in part, some not yet (the demo student)."""
+        from apps.finance import accounts, fees
+        from apps.finance.models import FeeItem, FeeSchedule
+
+        bursar = User.objects.get(email="accounts@northridge.example")
+        for programme in programmes:
+            for order, level in enumerate(levels[:2]):
+                schedule = FeeSchedule.objects.create(programme=programme, level=level,
+                                                      academic_year=semester.academic_year, semester=semester)
+                for n, (description, amount) in enumerate((("Tuition", 1800 + 100 * order), ("Examination fee", 150),
+                                                           ("SRC and student services dues", 60))):
+                    FeeItem.objects.create(schedule=schedule, description=description, amount=amount, order=n)
+                fees.bill(schedule, actor=bursar)
+        for index, student in enumerate(students[1:], start=1):
+            owed = accounts.balance(student)
+            share = (1, 0.6, 0.3, 0)[index % 4]
+            if owed > 0 and share:
+                accounts.record_manual_payment(student, amount=round(owed * Decimal(str(share)), 2),
+                                               reference=f"DEMO-{index:04d}", channel="bank", actor=bursar,
+                                               note="Demo payment")
 
     @staticmethod
     def _options(student, semester):

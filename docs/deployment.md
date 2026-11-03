@@ -28,6 +28,7 @@ Copy `.env.example` to `.env` next to `manage.py` and set:
 | `DEFAULT_FROM_EMAIL` | any | a sender verified in Brevo, e.g. `SIS <no-reply@your-college.edu.gh>` |
 | `EMAIL_DAILY_LIMIT`, `EMAIL_SECURITY_RESERVE` | 300, 60 | Brevo free plan: 300 (lower it if you also send campaigns) |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | empty (push off) | from `python manage.py generate_vapid_keys`; subject `mailto:<it contact>` |
+| `PAYSTACK_SECRET_KEY` | empty (online payment off) | Paystack → *Settings → API Keys & Webhooks*: `sk_test_…` while testing, then `sk_live_…` (keep secret). See [payments.md](payments.md) |
 | `NUM_PROXIES` | 1 | proxies that add to `X-Forwarded-For` in front of Django: 1 for PythonAnywhere alone, 2 when every request comes through the Vercel rewrites. Rate limits use the address this selects |
 | `CACHE_LOCATION` | empty (memory) | e.g. `/home/<username>/sis-cache`, so rate limits are shared by all web workers |
 | `THROTTLE_LOGIN_EMAIL`, `THROTTLE_PASSWORD_RESET_EMAIL` | 20/hour, 3/hour | per email address, whatever address the requests come from |
@@ -87,11 +88,16 @@ Never commit `.env`.
    `.env`, and reload. Generate the keys once: changing them later means everyone has to turn push on again.
 8. **Scheduled task (required).** On the *Tasks* tab, add a daily task at 06:00 UTC:
    ```bash
-   cd ~/sis-backend && ~/.virtualenvs/sis/bin/python manage.py send_pending_messages --settings=config.settings.prod
+   cd ~/sis-backend && ~/.virtualenvs/sis/bin/python manage.py run_daily_tasks --settings=config.settings.prod
    ```
-   It sends whatever did not go out straight away and merges waiting alert emails into digests.
+   It checks online fee payments that were left pending with Paystack, then sends whatever did not go
+   out straight away and merges waiting alert emails into digests. (`run_daily_tasks` runs
+   `reconcile_payments` and `send_pending_messages`; each can also be run on its own.)
    A free account allows one daily task. On a paid account, run it hourly.
    See [notifications.md](notifications.md).
+9. **Online fee payment (optional).** Follow [payments.md](payments.md): put the Paystack secret key in
+   `.env`, set the webhook URL in Paystack, reload, then turn on *Students can pay online* in
+   Institution settings.
 
 SQLite on PythonAnywhere is acceptable only for demonstrations. Use PostgreSQL (section 6) for pilots.
 

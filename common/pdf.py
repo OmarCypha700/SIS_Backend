@@ -293,3 +293,59 @@ def official_transcript(transcript, *, verify_url, copy_number=1):
     footer = "Official transcript" + (f" · Reprint, copy {copy_number}" if copy_number > 1 else "")
     return _render(story, reference=transcript.serial, footer_text=footer,
                    watermark="INTERIM" if transcript.is_interim else "")
+
+
+# --- Fees ----------------------------------------------------------------------
+
+def _ghs(value):
+    return f"GHS {value:,.2f}"
+
+
+def payment_receipt(payment):
+    """Receipt for one successful payment (online or recorded by the Accounts Office)."""
+    profile = InstitutionProfile.load()
+    student = payment.student
+    paid = timezone.localtime(payment.paid_at).strftime("%d %b %Y %H:%M") if payment.paid_at else "—"
+    method = {"mobile_money": "Mobile money", "card": "Card", "bank": "Bank", "bank_transfer": "Bank transfer",
+              "cash": "Cash"}.get(payment.channel, (payment.channel or "").replace("_", " ").title() or "—")
+    story = _header(profile, "Official receipt")
+    story.append(_details([
+        ("Receipt number", payment.receipt_number), ("Date paid", paid),
+        ("Name", student.full_name), ("Student number", student.student_number),
+        ("Programme", f"{student.programme.name} ({student.programme.code})"), ("Level", student.current_level.name),
+        ("Payment method", method), ("Reference", payment.reference),
+    ]))
+    story.append(Spacer(1, 5 * mm))
+    rows = [["School fees", _ghs(payment.amount)]]
+    if payment.fee:
+        rows.append(["Transaction fee (payment service)", _ghs(payment.fee)])
+    story.append(_data_table(["Description", "Amount"], rows, [130 * mm, 40 * mm], align_right=(1,),
+                             footer=["Total paid", _ghs(payment.total)]))
+    story.append(Spacer(1, 4 * mm))
+    story.append(Paragraph(f"Credited to school fees: <b>{_ghs(payment.amount)}</b>."
+                           + (" The transaction fee is kept by the payment service." if payment.fee else ""), STYLE_BODY))
+    if payment.note:
+        story.append(Paragraph(f"Note: {_escape(payment.note)}", STYLE_BODY))
+    return _render(story, reference=payment.receipt_number or payment.reference)
+
+
+def fee_statement(student, lines, summary):
+    """A student's fees account: every entry with the running balance."""
+    profile = InstitutionProfile.load()
+    story = _header(profile, "Statement of fees account")
+    story.append(_details([
+        ("Name", student.full_name), ("Student number", student.student_number),
+        ("Programme", f"{student.programme.name} ({student.programme.code})"), ("Level", student.current_level.name),
+        ("Balance", _ghs(summary["balance"])), ("Statement date", timezone.localdate().strftime("%d %b %Y")),
+    ]))
+    story.append(Spacer(1, 5 * mm))
+    rows = [[timezone.localtime(line["date"]).strftime("%d %b %Y"), line["description"]
+             + (f" ({line['period']})" if line["period"] else "") + (" — reversed" if line["reversed"] else ""),
+             _ghs(line["amount"]) if line["amount"] > 0 else "", _ghs(-line["amount"]) if line["amount"] < 0 else "",
+             _ghs(line["balance"])] for line in lines]
+    story.append(_data_table(["Date", "Description", "Charged", "Paid / credited", "Balance"], rows or [["", "No entries",
+                                                                                                         "", "", ""]],
+                             [22 * mm, 78 * mm, 25 * mm, 25 * mm, 25 * mm], align_right=(2, 3, 4),
+                             footer=["", "Balance owed" if summary["balance"] >= 0 else "In credit", "", "",
+                                     _ghs(abs(summary["balance"]))]))
+    return _render(story, reference=f"FEES-{student.student_number}", footer_text="Unofficial copy")

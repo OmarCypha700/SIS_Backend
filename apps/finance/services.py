@@ -28,6 +28,13 @@ def clearance_block(student, semester, profile=None):
     profile = profile or InstitutionProfile.load()
     if not profile.require_financial_clearance or is_cleared(student, semester):
         return None
+    from .accounts import requirement
+
+    needed = requirement(student, semester, profile)
+    if needed["billed"] and needed["short_by"] > 0:
+        earlier = " and your earlier balance" if needed["earlier_balance"] > 0 else ""
+        return (f"Pay at least GHS {needed['short_by']:,.2f} more to register: {needed['percent_required']}% of "
+                f"this semester's fees{earlier} must be paid first.")
     return NOT_CLEARED_MESSAGE.format(semester=semester)
 
 
