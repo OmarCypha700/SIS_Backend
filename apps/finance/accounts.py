@@ -73,30 +73,60 @@ def requirement(student, semester, profile=None):
     profile = profile or InstitutionProfile.load()
     per_year = profile.fee_billing_period == FeeBillingPeriod.ACADEMIC_YEAR
     buckets = {"earlier": ZERO, "current": ZERO, "later": ZERO}
+    penalty = ZERO  # this semester's late registration penalty: paid in full, before the share of the fees
     rows = (LedgerEntry.objects.filter(student=student, side=EntrySide.BILL)
-            .values("academic_year__start_date", "semester__term_number").annotate(total=Sum("amount")))
+            .values("academic_year__start_date", "semester__term_number", "semester_id", "kind", "reverses__kind")
+            .annotate(total=Sum("amount")))
     for row in rows:
+        kind = row["reverses__kind"] if row["kind"] == EntryKind.REVERSAL else row["kind"]
+        if kind == EntryKind.PENALTY and row["semester_id"] == semester.pk:
+            penalty += row["total"]
+            continue
         if row["academic_year__start_date"] is None:
             buckets["earlier"] += row["total"]
             continue
         buckets[_bucket(row["academic_year__start_date"], row["semester__term_number"], semester, per_year)] += row["total"]
     earlier, current = max(money(buckets["earlier"]), ZERO), max(money(buckets["current"]), ZERO)
+    penalty = max(money(penalty), ZERO)
     percent = profile.registration_payment_percent
-    needed = earlier + ceil_cents(current * percent / 100)
+    needed = earlier + penalty + ceil_cents(current * percent / 100)
     paid = settled(student)
-    towards_current = max(paid - earlier, ZERO)
+    towards_current = max(paid - earlier - penalty, ZERO)
+    penalty_due = _penalty_outstanding(student, semester, penalty)
     return {
         "billed": current > 0,
         "percent_required": percent,
         "earlier_balance": max(earlier - paid, ZERO),
+        "penalty": penalty,
+        "penalty_outstanding": penalty_due,
         "current_bill": current,
         "paid": paid,
         "needed": needed,
-        "short_by": max(needed - paid, ZERO),
+        "short_by": max(needed - paid, penalty_due, ZERO),
         "percent_paid": int(min(towards_current / current * 100, Decimal(100))) if current else None,
-        "meets": current > 0 and paid >= needed,
+        "meets": current > 0 and paid >= needed and penalty_due == 0,
         "balance": balance(student),
     }
+
+
+def _penalty_outstanding(student, semester, penalty):
+    """
+    What is left to pay of this semester's late registration penalty. Only money paid after it was
+    charged (or credit the student already had) pays it: fees paid earlier stay with the fees, so a
+    student who had paid this semester in full still pays the penalty.
+    """
+    if penalty <= 0:
+        return ZERO
+    charge = (LedgerEntry.objects.filter(student=student, semester=semester, kind=EntryKind.PENALTY)
+              .order_by("id").first())
+    if charge is None:
+        return ZERO
+    # Entries are append-only, so ids give their order exactly (timestamps can tie).
+    before = LedgerEntry.objects.filter(student=student, pk__lt=charge.pk).aggregate(s=Sum("amount"))["s"]
+    credit = max(-(before or ZERO), ZERO)
+    since = LedgerEntry.objects.filter(student=student, side=EntrySide.SETTLEMENT, pk__gt=charge.pk)
+    paid_since = -(since.aggregate(s=Sum("amount"))["s"] or ZERO)
+    return max(money(penalty - credit - paid_since), ZERO)
 
 
 def _target_semesters(semester, profile):
@@ -134,6 +164,22 @@ def refresh_clearance(students):
                 if target == semester:
                     newly.append(student)
     return newly
+
+
+def clearance_warning(student):
+    """
+    Clearance is never revoked automatically. When a change leaves a cleared student short of the
+    registration rule, say so, so the Accounts Office can decide whether to revoke it.
+    """
+    semester = current_semester()
+    if semester is None or not FinancialClearance.objects.filter(student=student, semester=semester,
+                                                                  cleared=True).exists():
+        return None
+    result = requirement(student, semester)
+    if not result["billed"] or result["meets"]:
+        return None
+    return (f"{student.full_name} is still cleared to register for {semester}, but now needs GHS "
+            f"{result['short_by']:,.2f} more to meet the rule. Review their clearance if it should be revoked.")
 
 
 def next_receipt_number():
@@ -261,6 +307,10 @@ def reverse_entry(entry, *, reason, actor):
         student=entry.student, kind=EntryKind.REVERSAL, amount=-entry.amount, reverses=entry,
         description=f"Reversal: {reason}", academic_year=entry.academic_year, semester=entry.semester,
         fee_item=entry.fee_item, payment=entry.payment, created_by=actor)
+    if entry.kind == EntryKind.PAYMENT and entry.payment_id:
+        # The money was never really paid by this student: the payment and its receipt are cancelled.
+        Payment.objects.filter(pk=entry.payment_id).update(status=PaymentStatus.REVERSED, reversed_at=timezone.now(),
+                                                           reversal_reason=reason, updated_at=timezone.now())
     log_action("finance.reversed", actor=actor, instance=reversal, reason=reason,
                summary=f"Reversed {entry.get_kind_display().lower()} of GHS {abs(entry.amount)} for "
                        f"{entry.student.student_number}")

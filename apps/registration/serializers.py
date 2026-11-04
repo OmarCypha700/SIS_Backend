@@ -63,6 +63,12 @@ class SubmitRegistrationSerializer(serializers.Serializer):
     semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.all(), required=False)
 
 
+class LatePenaltySerializer(serializers.Serializer):
+    semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.all(), required=False)
+    student = serializers.PrimaryKeyRelatedField(queryset=Student.objects.all(), required=False,
+                                                 help_text="Registry staff only: the student registering late.")
+
+
 class AdminRegistrationSerializer(SubmitRegistrationSerializer):
     student = serializers.PrimaryKeyRelatedField(queryset=Student.objects.all())
     semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.all())

@@ -453,3 +453,42 @@ def test_fee_settings_from_the_settings_form(admin_user):
     assert InstitutionProfile.load().payment_fee_cap is None
     assert api.patch("/api/v1/institution/settings/", {"registration_payment_percent": "101"},
                      format="multipart").status_code == 400
+
+
+def test_reversing_a_payment_cancels_it_and_warns_about_clearance(world, officer):
+    from apps.finance import services
+
+    settings_(require_financial_clearance=True)
+    fees.bill(schedule(world, "1000"), actor=officer)
+    payment = pay(world, world.student, "600", officer, reference="GCB-WRONG")
+    assert services.is_cleared(world.student, world.semester)  # cleared automatically at 60%
+    api = client_for(officer)
+    url = f"/api/v1/student-accounts/{world.student.pk}/"
+    line = next(x for x in api.get(url).data["statement"] if x["kind"] == "PAYMENT")
+    response = api.post(url + "reverse/", {"entry": line["id"], "reason": "Recorded on the wrong student"}, format="json")
+    assert response.status_code == 200
+    assert "still cleared" in response.data["warning"] and "600.00" in response.data["warning"]
+
+    payment.refresh_from_db()
+    assert payment.status == PaymentStatus.REVERSED and payment.reversal_reason == "Recorded on the wrong student"
+    assert services.is_cleared(world.student, world.semester)  # never revoked automatically
+    receipt = api.get(f"/api/v1/payments/{payment.pk}/receipt/")
+    assert receipt.status_code == 200 and receipt["Content-Type"] == "application/pdf"
+    # A reversed payment no longer counts as collected.
+    assert api.get("/api/v1/payments/summary/").data["collected"] == Decimal("0.00")
+
+
+def test_payments_filtered_by_date_paid_and_exported_with_the_filters(world, officer):
+    fees.bill(schedule(world, "1000"), actor=officer)
+    early = pay(world, world.student, "100", officer, reference="GCB-EARLY")
+    late = pay(world, world.student, "200", officer, reference="GCB-LATE")
+    today = timezone.localdate()
+    Payment.objects.filter(pk=early.pk).update(paid_at=timezone.now() - datetime.timedelta(days=10))
+    api = client_for(officer)
+    since = (today - datetime.timedelta(days=2)).isoformat()
+    listed = api.get(f"/api/v1/payments/?date_from={since}&date_to={today.isoformat()}").data["results"]
+    assert [p["reference"] for p in listed] == ["GCB-LATE"]
+    exported = api.get(f"/api/v1/payments/export/?date_from={since}&file_format=csv")
+    body = b"".join(exported.streaming_content if exported.streaming else [exported.content]).decode("utf-8-sig")
+    assert "GCB-LATE" in body and "GCB-EARLY" not in body
+    assert late.reference in body

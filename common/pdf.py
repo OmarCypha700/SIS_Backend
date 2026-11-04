@@ -326,7 +326,13 @@ def payment_receipt(payment):
                            + (" The transaction fee is kept by the payment service." if payment.fee else ""), STYLE_BODY))
     if payment.note:
         story.append(Paragraph(f"Note: {_escape(payment.note)}", STYLE_BODY))
-    return _render(story, reference=payment.receipt_number or payment.reference)
+    if payment.reversed_at:
+        when = timezone.localtime(payment.reversed_at).strftime("%d %b %Y")
+        story.append(Spacer(1, 4 * mm))
+        story.append(Paragraph(f"<b>CANCELLED.</b> This payment was reversed on {when} and is not on the student's "
+                               f"account. Reason: {_escape(payment.reversal_reason)}", STYLE_BODY))
+    return _render(story, reference=payment.receipt_number or payment.reference,
+                   watermark="CANCELLED" if payment.reversed_at else "")
 
 
 def fee_statement(student, lines, summary):

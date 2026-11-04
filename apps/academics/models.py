@@ -41,6 +41,11 @@ class Semester(TimeStampedModel):
     end_date = models.DateField()
     registration_start = models.DateTimeField()
     registration_end = models.DateTimeField()
+    late_registration_end = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Students who missed registration may register until then, after paying the late registration "
+                  "penalty. Blank: no late registration.",
+    )
     add_drop_deadline = models.DateTimeField(null=True, blank=True)
     result_entry_deadline = models.DateTimeField(null=True, blank=True)
     result_publication_date = models.DateField(null=True, blank=True)
@@ -64,6 +69,8 @@ class Semester(TimeStampedModel):
             errors["end_date"] = "End date must be after the start date."
         if self.registration_start and self.registration_end and self.registration_start >= self.registration_end:
             errors["registration_end"] = "Registration must close after it opens."
+        if self.late_registration_end and self.registration_end and self.late_registration_end <= self.registration_end:
+            errors["late_registration_end"] = "Late registration must close after normal registration closes."
         if self.add_drop_deadline and self.registration_start and self.add_drop_deadline < self.registration_start:
             errors["add_drop_deadline"] = "The add/drop deadline cannot be before registration opens."
         year = self.academic_year if self.academic_year_id else None
@@ -80,6 +87,12 @@ class Semester(TimeStampedModel):
     def registration_is_open(self, at=None):
         at = at or timezone.now()
         return self.status == PeriodStatus.ACTIVE and self.registration_start <= at <= self.registration_end
+
+    def late_registration_is_open(self, at=None):
+        """After normal registration has closed, while late registration (with the penalty) is still allowed."""
+        at = at or timezone.now()
+        return (self.status == PeriodStatus.ACTIVE and self.late_registration_end is not None
+                and self.registration_end < at <= self.late_registration_end)
 
     def amendments_are_open(self, at=None):
         at = at or timezone.now()

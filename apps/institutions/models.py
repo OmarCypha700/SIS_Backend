@@ -87,6 +87,11 @@ class InstitutionProfile(TimeStampedModel):
         validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("10"))],
         help_text="Payment provider's charge, added on top of the fees so the institution receives the full amount.",
     )
+    late_registration_penalty = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("0"), validators=[MinValueValidator(Decimal("0"))],
+        help_text="Charged to a student who registers after the registration window has closed; it must be paid in "
+                  "full before they can register. 0: no penalty.",
+    )
     payment_fee_cap = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(Decimal("0"))],
         help_text="Largest transaction fee for one payment, if the provider caps it. Blank: no cap.",

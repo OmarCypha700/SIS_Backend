@@ -100,6 +100,9 @@
   money, card, bank) with the transaction fee added on top, or recorded by the Accounts Office or
   imported from a bank statement; receipts and statements as PDF. A student is cleared automatically
   once earlier balances are paid and the set share (60% by default) of the current bill is paid.
+* **Late registration penalty**: an optional late registration period per semester; students who
+  missed the window pay the penalty (set in Institution settings) in full before registering. Waivers,
+  reversals and an audited administrator override are supported. See [payments.md](payments.md).
 
 ## Known limitations
 

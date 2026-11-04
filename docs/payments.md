@@ -52,6 +52,34 @@ reduce what was paid.
 * Clearance only blocks registration when *Students must be financially cleared before registering* is
   on. When it is on, the registration page tells the student exactly how much more to pay.
 
+## Late registration penalty
+
+Two things must be true for a student to register: they are **financially cleared**, and they register
+**within the registration window**. A student who misses the window can still register during the
+semester's **late registration period**, but only after paying the **late registration penalty** in full.
+
+* **Settings.** Set the amount under Institution settings → School fees → *Late registration penalty*
+  (0 turns it off). For each semester, set *Late registration closes* under Academic periods, after the
+  normal closing date. Without it, registration simply closes as before.
+* **Who is charged.** Only students who actually register late. The registration page tells them the
+  amount; *Add the penalty to my fees* puts it on their account (once per semester), and they pay it
+  online or at the bank like any other fee. Students who never register late are never charged.
+* **Paid in full, by new money.** The penalty is paid by money paid after it was charged, or by credit
+  the student already had. Fees paid earlier stay with the fees, so a student who had already paid the
+  whole semester still pays the penalty. It is in addition to the share of the fees (60% by default).
+* **Add/drop is not late.** A student who registered on time can still change courses until the add/drop
+  deadline without a penalty.
+* **Exceptions.** The Accounts Office can *waive* the penalty (e.g. medical grounds) with a reason: that
+  counts as paid. Reversing a penalty charged in error removes it without charging it again.
+* **Registry staff** registering a student late, on their behalf, can add the penalty from the *Register
+  a student* page and are held to the same rule; only an administrator can register the student before
+  it is paid, and the override is recorded in the audit log.
+
+| Example | Needed to register |
+|---|---|
+| Fees GHS 1,000 (60% rule), penalty GHS 200, nothing paid yet | GHS 800: the penalty in full plus GHS 600 |
+| Had paid GHS 1,000 before the window closed, then adds the GHS 200 penalty | GHS 200 more: the penalty |
+
 ## Accounts Office: day to day
 
 * **Finance → Fee schedules:**

@@ -18,6 +18,7 @@ from common.tabular import requested_format, table_response
 from common.exceptions import DomainError
 from common.permissions import RoleBasedPermission
 
+from apps.finance import late
 from apps.finance import services as finance
 
 from . import bulk, services
@@ -25,9 +26,9 @@ from .models import (
     CourseRegistration, CourseRegistrationStatus, RegistrationEvent, RegistrationStatus, SemesterRegistration,
 )
 from .serializers import (
-    AdminRegistrationSerializer, BulkRegistrationSerializer, BulkReviewSerializer, ReviewSerializer,
-    SemesterRegistrationDetailSerializer, SemesterRegistrationListSerializer, SubmitRegistrationSerializer,
-    WithdrawSerializer,
+    AdminRegistrationSerializer, BulkRegistrationSerializer, BulkReviewSerializer, LatePenaltySerializer,
+    ReviewSerializer, SemesterRegistrationDetailSerializer, SemesterRegistrationListSerializer,
+    SubmitRegistrationSerializer, WithdrawSerializer,
 )
 
 REGISTRY = (Role.ADMIN, Role.REGISTRAR)
@@ -59,6 +60,7 @@ def _options_payload(student, semester):
         "semester": {
             "id": semester.id, "name": str(semester), "registration_start": semester.registration_start,
             "registration_end": semester.registration_end, "add_drop_deadline": semester.add_drop_deadline,
+            "late_registration_end": semester.late_registration_end,
         },
         "student": {
             "id": student.id, "student_number": student.student_number, "full_name": student.full_name,
@@ -67,6 +69,7 @@ def _options_payload(student, semester):
         "can_register": ctx.can_register,
         "financial_clearance": {"required": ctx.profile.require_financial_clearance,
                                 "message": finance.clearance_block(student, semester, ctx.profile)},
+        "late_registration": late.state(student, semester, ctx.profile),
         "window_open": is_open,
         "window_message": message,
         "credit_limits": {"min": student.programme.min_credits_per_semester,
@@ -109,6 +112,8 @@ class RegistrationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         "current": (Role.STUDENT,),
         "submit": (Role.STUDENT,),
         "options_for_student": REGISTRY,
+        "late_penalty": (Role.STUDENT,),
+        "late_penalty_for_student": REGISTRY,
         "admin_register": REGISTRY,
         "review": REGISTRY,
         "withdraw": REGISTRY,
@@ -161,6 +166,30 @@ class RegistrationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
             self._own_student(request), semester, payload.validated_data["offering_ids"], actor=request.user
         )
         return Response(SemesterRegistrationDetailSerializer(_detail_queryset().get(pk=registration.pk)).data)
+
+    @extend_schema(request=LatePenaltySerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"], url_path="late-penalty")
+    def late_penalty(self, request):
+        """Registering after the window closed: add the late registration penalty to my account."""
+        payload = LatePenaltySerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        student = self._own_student(request)
+        semester = payload.validated_data.get("semester") or _current_semester()
+        late.charge(student, semester, actor=request.user)
+        return Response(_options_payload(student, semester), status=201)
+
+    @extend_schema(request=LatePenaltySerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=["post"], url_path="on-behalf/late-penalty")
+    def late_penalty_for_student(self, request):
+        """Registry staff registering a student late: add the penalty to the student's account."""
+        payload = LatePenaltySerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        student = payload.validated_data.get("student")
+        if student is None:
+            raise DomainError("Choose the student.", code="student_required")
+        semester = payload.validated_data.get("semester") or _current_semester()
+        late.charge(student, semester, actor=request.user)
+        return Response(_options_payload(student, semester), status=201)
 
     @extend_schema(parameters=[OpenApiParameter("student", int, required=True), OpenApiParameter("semester", str)],
                    responses=OpenApiTypes.OBJECT)

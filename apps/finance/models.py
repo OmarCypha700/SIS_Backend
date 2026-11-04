@@ -88,6 +88,7 @@ class EntryKind(models.TextChoices):
     PAYMENT = "PAYMENT", "Payment"
     WAIVER = "WAIVER", "Waiver or scholarship"
     REFUND = "REFUND", "Refund"
+    PENALTY = "PENALTY", "Late registration penalty"
     REVERSAL = "REVERSAL", "Reversal"
 
 
@@ -96,7 +97,7 @@ class EntrySide(models.TextChoices):
     SETTLEMENT = "SETTLEMENT", "Settlement"  # what was paid, waived or refunded
 
 
-BILL_KINDS = (EntryKind.CHARGE, EntryKind.ADJUSTMENT)
+BILL_KINDS = (EntryKind.CHARGE, EntryKind.ADJUSTMENT, EntryKind.PENALTY)
 
 
 class LedgerEntry(models.Model):
@@ -154,12 +155,14 @@ class PaymentStatus(models.TextChoices):
     FAILED = "FAILED", "Failed"
     ABANDONED = "ABANDONED", "Not completed"
     MISMATCH = "MISMATCH", "Needs attention"
+    REVERSED = "REVERSED", "Reversed"
 
 
 class Payment(TimeStampedModel):
     """
     One payment attempt. `amount` is what goes to school fees; `fee` is the transaction fee the
-    student paid on top; `total` is what was charged. Only SUCCESS payments are on the ledger.
+    student paid on top; `total` is what was charged. Only SUCCESS payments count as paid; a
+    REVERSED payment was credited and then taken off the account because it was recorded in error.
     """
 
     student = models.ForeignKey("students.Student", on_delete=models.PROTECT, related_name="payments")
@@ -178,6 +181,8 @@ class Payment(TimeStampedModel):
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                     related_name="+")
     last_checked_at = models.DateTimeField(null=True, blank=True)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversal_reason = models.CharField(max_length=200, blank=True)
 
     class Meta:
         ordering = ["-created_at", "-id"]

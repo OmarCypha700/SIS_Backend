@@ -39,7 +39,7 @@ class SemesterSerializer(ClosedPeriodGuardMixin, ModelCleanMixin, serializers.Mo
         model = Semester
         fields = [
             "id", "academic_year", "academic_year_name", "name", "term_number", "start_date", "end_date",
-            "registration_start", "registration_end", "add_drop_deadline", "result_entry_deadline",
+            "registration_start", "registration_end", "late_registration_end", "add_drop_deadline", "result_entry_deadline",
             "result_publication_date", "status", "is_current", "registration_open", "amendments_open",
             "created_at", "updated_at",
         ]

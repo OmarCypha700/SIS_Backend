@@ -14,6 +14,7 @@ from django.utils import timezone
 from apps.academics.models import CourseCategory, CourseOffering, OfferingStatus, PeriodStatus, ProgrammeCourse
 from apps.accounts.models import Role
 from apps.audit.services import log_action
+from apps.finance import late
 from apps.finance import services as finance
 from apps.institutions.models import AcademicRegulation, InstitutionProfile
 from apps.notifications import events as notify_events
@@ -202,6 +203,9 @@ def window_state(semester, registration):
     if registration is None or registration.status in (RegistrationStatus.REJECTED, RegistrationStatus.CANCELLED):
         if semester.registration_is_open(now):
             return True, ""
+        if semester.late_registration_is_open(now):
+            closes = timezone.localtime(semester.late_registration_end).strftime("%d %b %Y, %H:%M")
+            return True, f"Registration has closed. Late registration is open until {closes}."
         if now < semester.registration_start:
             return False, "Registration has not opened yet."
         return False, "Registration for this semester is closed."
@@ -236,6 +240,13 @@ def submit_registration(student, semester, offering_ids, *, actor, on_behalf=Fal
             raise DomainError(not_cleared, code="not_cleared", status_code=403)
         log_action("registration.clearance_override", actor=actor, instance=student, reason=reason,
                    summary=f"{student.student_number} registered for {semester} without financial clearance")
+    late_fee = late.block(student, semester, ctx.profile)
+    if late_fee:
+        # As with clearance, only an administrator registering on the student's behalf may override it.
+        if not (on_behalf and actor.has_any_role(Role.ADMIN)):
+            raise DomainError(late_fee, code="late_penalty_unpaid", status_code=403)
+        log_action("registration.late_penalty_override", actor=actor, instance=student, reason=reason,
+                   summary=f"{student.student_number} registered late for {semester} without paying the penalty")
     is_open, message = window_state(semester, ctx.registration)
     if not is_open and not on_behalf:
         raise DomainError(message, code="window_closed")

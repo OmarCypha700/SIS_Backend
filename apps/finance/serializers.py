@@ -124,7 +124,8 @@ class PaymentSerializer(serializers.ModelSerializer):
         model = Payment
         fields = ["id", "student", "student_number", "student_name", "programme_code", "reference", "source",
                   "source_display", "status", "status_display", "amount", "fee", "total", "channel", "paid_at",
-                  "receipt_number", "gateway_message", "note", "recorded_by_name", "created_at", "last_checked_at"]
+                  "receipt_number", "gateway_message", "note", "recorded_by_name", "created_at", "last_checked_at",
+                  "reversed_at", "reversal_reason"]
         read_only_fields = fields
 
 
@@ -134,7 +135,7 @@ class MyPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = ["reference", "source", "status", "status_display", "amount", "fee", "total", "channel", "paid_at",
-                  "receipt_number", "created_at"]
+                  "receipt_number", "created_at", "reversed_at"]
         read_only_fields = fields
 
 

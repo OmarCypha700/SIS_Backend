@@ -282,7 +282,8 @@ class StudentAccountViewSet(viewsets.GenericViewSet):
         payload = EntrySerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         entry = accounts.add_entry(student, actor=request.user, **payload.validated_data)
-        return Response({"id": entry.id, "balance": accounts.balance(student)}, status=201)
+        return Response({"id": entry.id, "balance": accounts.balance(student),
+                         "warning": accounts.clearance_warning(student)}, status=201)
 
     @extend_schema(request=ReverseSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["post"])
@@ -295,7 +296,7 @@ class StudentAccountViewSet(viewsets.GenericViewSet):
         if entry is None:
             raise DomainError("Entry not found.", code="not_found", status_code=404)
         accounts.reverse_entry(entry, reason=payload.validated_data["reason"], actor=request.user)
-        return Response({"balance": accounts.balance(student)})
+        return Response({"balance": accounts.balance(student), "warning": accounts.clearance_warning(student)})
 
     @extend_schema(responses={200: OpenApiTypes.BINARY})
     @action(detail=True, methods=["get"], url_path="statement-pdf")
@@ -318,10 +319,12 @@ class PaymentViewSet(viewsets.ReadOnlyModelViewSet):
         for key in ("status", "source", "student"):
             if params.get(key):
                 queryset = queryset.filter(**{key: params[key]})
-        for key, lookup in (("date_from", "created_at__date__gte"), ("date_to", "created_at__date__lte")):
+        # The date paid, as on the bank statement; attempts never paid are dated when they were started.
+        for key, op in (("date_from", "gte"), ("date_to", "lte")):
             value = parse_date(params.get(key) or "")
             if value:
-                queryset = queryset.filter(**{lookup: value})
+                queryset = queryset.filter(Q(**{f"paid_at__date__{op}": value})
+                                           | Q(paid_at__isnull=True, **{f"created_at__date__{op}": value}))
         if params.get("search"):
             term = params["search"].strip()
             queryset = queryset.filter(Q(reference__icontains=term) | Q(receipt_number__icontains=term)
@@ -403,7 +406,7 @@ class PaymentViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 def _receipt(payment):
-    if payment.status != PaymentStatus.SUCCESS:
+    if payment.status not in (PaymentStatus.SUCCESS, PaymentStatus.REVERSED):  # a reversed one is stamped CANCELLED
         raise DomainError("A receipt is only available for a successful payment.", code="no_receipt", status_code=409)
     return pdf.pdf_response(pdf.payment_receipt(payment), f"receipt-{payment.receipt_number.replace('/', '-')}.pdf")
 
