@@ -267,3 +267,41 @@ class Appointment(models.Model):
         today = on or timezone.localdate()
         return (self.ended_at is None and self.starts_on <= today
                 and (self.ends_on is None or self.ends_on >= today))
+
+
+class SignInDelay(models.Model):
+    """
+    Wrong passwords per email address, typed by anyone, for accounts that exist or not (so the
+    delay never reveals which emails have accounts). After a few free attempts each further wrong
+    password makes the next attempt wait longer; see apps/accounts/signin.py.
+    """
+
+    email = models.CharField(max_length=254, unique=True)
+    failures = models.PositiveIntegerField(default=0)
+    last_failure_at = models.DateTimeField(null=True, blank=True)
+    locked_until = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.email}: {self.failures} wrong"
+
+
+class Passkey(models.Model):
+    """
+    A passkey on one of the person's devices (fingerprint, face or device PIN). Only the public key
+    is stored: the biometric data never leaves the device.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="passkeys")
+    credential_id = models.CharField(max_length=1024, unique=True, help_text="base64url")
+    public_key = models.BinaryField()
+    sign_count = models.PositiveBigIntegerField(default=0)
+    transports = models.JSONField(default=list, blank=True)
+    name = models.CharField(max_length=80)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.user_id})"

@@ -5,6 +5,7 @@ Environment-specific values come from environment variables (or a local .env fil
 see .env.example for the full list.
 """
 from pathlib import Path
+from urllib.parse import urlparse
 
 import environ
 
@@ -122,6 +123,11 @@ MAX_UPLOAD_CSV_BYTES = 5 * 1024 * 1024  # CSV and Excel imports
 DATA_UPLOAD_MAX_MEMORY_SIZE = 6 * 1024 * 1024
 
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+
+# Passkeys (sign in with the device's fingerprint, face or PIN). They belong to the address people use:
+# the frontend's host name and origin. Changing the domain later means setting passkeys up again.
+WEBAUTHN_RP_ID = env("WEBAUTHN_RP_ID", default=urlparse(FRONTEND_URL).hostname or "localhost")
+WEBAUTHN_ORIGINS = env.list("WEBAUTHN_ORIGINS", default=[FRONTEND_URL.rstrip("/")])
 
 # Online fee payment (Paystack). Blank key: online payment is off. Test keys start sk_test_.
 # Spaces or quotes pasted around the key would make the provider reject it.

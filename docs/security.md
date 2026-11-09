@@ -19,6 +19,20 @@
 * Password reset email is sent at most once per 15 minutes and 3 times a day per person, so repeated
   requests cannot use up the shared daily email allowance.
 * Login failures return one generic message and are audited (attempted email only).
+* **Growing wait after wrong passwords** (`apps/accounts/signin.py`): per email address, the first
+  three wrong passwords are free; then the next attempt must wait 15 s, 30 s, 1, 2, 4, 8 and at most
+  15 minutes. While waiting the password is not checked, and the sign-in button counts down. It is
+  never a permanent lock, so nobody can keep someone out of their account on purpose. It counts every
+  typed email the same way, existing or not, so it never reveals which emails have accounts. The count
+  clears on a successful sign-in, a password reset, a temporary password set by an administrator,
+  *Clear sign-in delay* on the Staff accounts page, or after 24 hours without failures. After 10 wrong
+  passwords in a row the account holder is warned (in-app and push) and the event is audited.
+* **Passkeys** (`apps/accounts/passkeys.py`): people can sign in with their device's fingerprint,
+  face or screen-lock PIN (WebAuthn). Only the public key is stored; the biometric never leaves the
+  device. User verification is required, each challenge is single-use and expires after five
+  minutes, the signature counter is checked, and passkeys only work on the portal's own address
+  (`WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGINS`, from `FRONTEND_URL`), so they cannot be phished. Adding,
+  removing and signing in with a passkey are audited; disabled accounts cannot sign in with one.
 * Password reset tokens are single-use and expire after 2 hours; the reset endpoint always
   returns the same response so it cannot be used to discover accounts.
 * Imports can generate a random temporary password per person (12 characters from an unambiguous
@@ -38,7 +52,8 @@
   branding change and cached, so anonymous icon requests never decode the logo.
 * Spreadsheet uploads are read row by row with hard limits on rows and columns, so a small file
   that declares a huge sheet cannot exhaust memory. Export headers are escaped like cells.
-* Multi-factor authentication is not implemented yet (recommended next step for staff).
+* Passkeys are available to everyone; requiring them (or another second factor) for administrators
+  and result approvers is a recommended next step.
 
 ## Authorisation
 

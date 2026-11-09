@@ -46,8 +46,8 @@ password change are rate limited (`429`).
 
 | Area | Endpoints | Who |
 |---|---|---|
-| Auth | `auth/csrf/`, `auth/login/`, `auth/logout/`, `auth/me/` (GET, PATCH phone), `auth/password/change/`, `auth/password/reset/`, `auth/password/reset/confirm/` | Everyone |
-| Staff accounts | `users/` (list/create/update), `users/{id}/activate/`, `deactivate/`, `set-password/`, `users/lecturers/` (all teaching staff) | Admin (lecturer lookup: registry, results officer) |
+| Auth | `auth/csrf/`, `auth/login/`, `auth/logout/`, `auth/me/` (GET, PATCH phone), `auth/password/change/`, `auth/password/reset/`, `auth/password/reset/confirm/`, `auth/passkeys/` (GET my passkeys; `{id}/` DELETE), `auth/passkeys/register/options/` + `auth/passkeys/register/` (`credential`, `name`), `auth/passkeys/sign-in/options/` + `auth/passkeys/sign-in/` (`credential`). Wrong passwords: 429 `sign_in_delayed` with `errors.retry_after` seconds | Everyone |
+| Staff accounts | `users/` (list/create/update), `users/{id}/activate/`, `deactivate/`, `set-password/`, `clear-sign-in-delay/`, `users/lecturers/` (all teaching staff) | Admin (lecturer lookup: registry, results officer) |
 | Appointments | `appointments/` (list `?user=&office=&current=`, create), `appointments/{id}/` (PATCH last day, reference, notes), `appointments/{id}/end/` (reason, optional `deactivate_account`) | Admin |
 | Institution | `institution/` (public branding), `institution/settings/` (GET, PATCH multipart for logo) | Public / Admin |
 | Academic periods | `academic-years/`, `semesters/`, `semesters/{id}/set-current/`, `academic/current-period/` | Staff read; admin/registrar write |

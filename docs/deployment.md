@@ -28,6 +28,7 @@ Copy `.env.example` to `.env` next to `manage.py` and set:
 | `DEFAULT_FROM_EMAIL` | any | a sender verified in Brevo, e.g. `SIS <no-reply@your-college.edu.gh>` |
 | `EMAIL_DAILY_LIMIT`, `EMAIL_SECURITY_RESERVE` | 300, 60 | Brevo free plan: 300 (lower it if you also send campaigns) |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | empty (push off) | from `python manage.py generate_vapid_keys`; subject `mailto:<it contact>` |
+| `WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGINS` | from `FRONTEND_URL` | leave unset: passkeys belong to the frontend's address. Changing the domain later means people set passkeys up again |
 | `PAYSTACK_SECRET_KEY` | empty (online payment off) | Paystack → *Settings → API Keys & Webhooks*: `sk_test_…` while testing, then `sk_live_…` (keep secret). See [payments.md](payments.md) |
 | `NUM_PROXIES` | 1 | proxies that add to `X-Forwarded-For` in front of Django: 1 for PythonAnywhere alone, 2 when every request comes through the Vercel rewrites. Rate limits use the address this selects |
 | `CACHE_LOCATION` | empty (memory) | e.g. `/home/<username>/sis-cache`, so rate limits are shared by all web workers |

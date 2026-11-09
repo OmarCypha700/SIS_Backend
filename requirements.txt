@@ -14,3 +14,5 @@ django-anymail[brevo]>=13.0
 pywebpush>=2.0
 # Online fee payment through Paystack (api.paystack.co is on PythonAnywhere's free allowlist)
 requests>=2.32
+# Passkeys: sign in with the device's fingerprint, face or PIN (WebAuthn)
+webauthn>=2.2

@@ -21,6 +21,7 @@ class Kind(models.TextChoices):
     FINANCIAL_CLEARANCE = "FINANCIAL_CLEARANCE", "Financial clearance"
     PAYMENT_RECEIVED = "PAYMENT_RECEIVED", "Payment received"
     PAYMENT_ATTENTION = "PAYMENT_ATTENTION", "Payment needs attention"
+    SECURITY = "SECURITY", "Account security"
     TEST = "TEST", "Test notification"
 
 

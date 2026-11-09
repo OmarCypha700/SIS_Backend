@@ -28,7 +28,7 @@ from common.importing import preview_payload, records_from_confirm, records_from
 from common.permissions import RoleBasedPermission
 from common.tabular import requested_format, table_response
 
-from . import importing
+from . import importing, signin
 from . import services as account_services
 
 from . import appointments as appointment_services
@@ -69,13 +69,27 @@ class LoginView(APIView):
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = authenticate(request, email=serializer.validated_data["email"].lower(),
-                            password=serializer.validated_data["password"])
+        email = signin.normalise(serializer.validated_data["email"])
+        waiting = signin.seconds_left(email)
+        if waiting:
+            # The password is not checked while the wait lasts.
+            raise _delayed(waiting)
+        user = authenticate(request, email=email, password=serializer.validated_data["password"])
         if user is None:
+            wait = signin.record_failure(email)
+            if wait:
+                raise _delayed(wait, wrong=True)
             # Same message for unknown email, wrong password and disabled account.
             raise DomainError("Invalid email or password.", code="invalid_credentials")
+        signin.clear(email)
         login(request, user)
         return Response(CurrentUserSerializer(_me_queryset_user(user)).data)
+
+
+def _delayed(seconds, wrong=False):
+    prefix = "Invalid email or password. " if wrong else "Too many wrong passwords. "
+    return DomainError(f"{prefix}Try again in {signin.format_wait(seconds)}.", code="sign_in_delayed",
+                       status_code=status.HTTP_429_TOO_MANY_REQUESTS, errors={"retry_after": seconds})
 
 
 class LogoutView(APIView):
@@ -159,6 +173,7 @@ class PasswordResetConfirmView(APIView):
         user.set_password(data["new_password"])
         user.must_change_password = False
         user.save(update_fields=["password", "must_change_password", "updated_at"])
+        signin.clear(user.email)  # a new password starts with a clean slate
         log_action("auth.password_reset_completed", actor=user, instance=user, summary="Password reset completed")
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -270,9 +285,21 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
         user.set_password(serializer.validated_data["new_password"])
         user.must_change_password = True
         user.save(update_fields=["password", "must_change_password", "updated_at"])
+        signin.clear(user.email)
         log_action("user.password_set_by_admin", actor=request.user, instance=user,
                    summary=f"Set a temporary password for {user.email}")
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"], url_path="clear-sign-in-delay")
+    def clear_sign_in_delay(self, request, pk=None):
+        """Let someone try their password again now, after wrong passwords made them wait."""
+        user = self.get_object()
+        waiting = signin.seconds_left(user.email)
+        signin.clear(user.email)
+        log_action("user.sign_in_delay_cleared", actor=request.user, instance=user,
+                   summary=f"Cleared the sign-in delay for {user.email}")
+        return Response({"was_waiting_seconds": waiting})
 
     @extend_schema(request={"multipart/form-data": {"type": "object", "properties": {"file": {"type": "string", "format": "binary"}}}},
                    responses=OpenApiTypes.OBJECT)
