@@ -286,3 +286,18 @@ def test_app_icon(api, query, status):
         assert response["Content-Type"] == "image/png" and response.content[:4] == b"\x89PNG"
         again = api.get(f"/api/v1/institution/app-icon/?{query}", HTTP_IF_NONE_MATCH=response["ETag"])
         assert again.status_code == 304
+
+
+def test_every_notification_has_a_message_preview():
+    """Push shows the title and a preview line, like a chat message: no event may leave the body empty."""
+    import ast
+    import inspect
+
+    from apps.notifications import events
+
+    tree = ast.parse(inspect.getsource(events))
+    calls = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "notify"]
+    assert calls
+    missing = [node.lineno for node in calls if "body" not in {k.arg for k in node.keywords}]
+    assert not missing, f"notify() without a body on lines {missing}"

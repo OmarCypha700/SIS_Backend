@@ -58,10 +58,41 @@ class AppIconView(APIView):
         if png is None:
             png = app_icon.render(profile, size, purpose)
             cache.set(key, png, timeout=7 * 24 * 60 * 60)
-        response = HttpResponse(png, content_type="image/png")
-        response["ETag"] = tag
-        response["Cache-Control"] = "public, max-age=86400"
-        return response
+        return _png_response(png, tag)
+
+
+def _png_response(png, tag):
+    response = HttpResponse(png, content_type="image/png")
+    response["ETag"] = tag
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+class AppSplashView(APIView):
+    """The opening screen of the app installed on an iPhone or iPad: the logo and the institution's name."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(parameters=[OpenApiParameter("width", int), OpenApiParameter("height", int)],
+                   responses={(200, "image/png"): OpenApiTypes.BINARY})
+    def get(self, request):
+        try:
+            width, height = int(request.query_params.get("width", 0)), int(request.query_params.get("height", 0))
+        except ValueError:
+            width = height = 0
+        if (min(width, height), max(width, height)) not in app_icon.SPLASH_SIZES:
+            return HttpResponse(status=404)  # only real device sizes: nobody can ask for huge images
+        profile = InstitutionProfile.load()
+        tag = f'"{app_icon.etag(profile, f"{width}x{height}", "splash")}"'
+        if request.headers.get("If-None-Match") == tag:
+            return HttpResponseNotModified()
+        key = f"app-splash:{tag}"
+        png = cache.get(key)
+        if png is None:
+            png = app_icon.render_splash(profile, width, height)
+            cache.set(key, png, timeout=7 * 24 * 60 * 60)
+        return _png_response(png, tag)
 
 
 class TranscriptImageView(APIView):

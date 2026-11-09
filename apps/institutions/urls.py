@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path("institution/", views.InstitutionBrandingView.as_view(), name="institution-branding"),
     path("institution/app-icon/", views.AppIconView.as_view(), name="institution-app-icon"),
+    path("institution/app-splash/", views.AppSplashView.as_view(), name="institution-app-splash"),
     path("institution/transcript-images/<str:kind>/", views.TranscriptImageView.as_view(),
          name="institution-transcript-image"),
     path("institution/settings/", views.InstitutionSettingsView.as_view(), name="institution-settings"),

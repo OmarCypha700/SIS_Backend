@@ -78,8 +78,23 @@ A failed email or push never breaks the action that caused it. The failure is lo
   (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT=mailto:...`). Without keys, push is off and
   everything else still works.
   Changing the keys disconnects every device, and people then have to turn push on again.
-* People turn push on per device under *Profile → Notifications*. The browser asks for permission at
-  that point, never on its own.
+* **Push is on by default.** Browsers only allow notifications after the person agrees once on each
+  device, so:
+  * if notifications are already allowed on the device, it is signed up for the account automatically
+    at every sign-in, with no question;
+  * otherwise a small *Turn on notifications* prompt appears after sign-in; one tap shows the browser's
+    *Allow* question. *Not now* hides it for 3 days;
+  * on an iPhone or iPad in Safari, the prompt explains that the app must be added to the Home Screen
+    first (Apple only allows push for installed apps);
+  * if the person turns push off under *Profile → Notifications*, that is remembered on the device and
+    it is never switched back on by itself. If they blocked notifications in the browser, the app cannot
+    ask again: they have to allow them in the browser's site settings.
+* **What a notification looks like.** Like a message in a chat app: the institution's logo as the
+  picture, the title in bold and a one-line preview of the message (every notification has one), with
+  the app's name and the time. On Android and desktop Chrome/Edge there are *Open* and *Mark as read*
+  buttons; *Mark as read* works without opening the app where the browser allows it, and otherwise
+  opens the item. Android's small status-bar icon is the institution's initials, because Android shows
+  only the shape of that icon. Previews never contain marks, grades or other personal details.
 * Signing out removes the device's subscription, so a shared computer does not receive the previous
   person's notifications.
 * Push and the service worker need HTTPS. Vercel and PythonAnywhere provide it, and `localhost` works
@@ -108,7 +123,14 @@ are copyrighted.
 
 * The app is branded automatically: its name, theme colour and icons come from *Institution
   settings*. Icons are drawn from the logo, or from the initials when there is no logo, at
-  `/api/v1/institution/app-icon/`.
+  `/api/v1/institution/app-icon/`. The logo's empty margins are trimmed and it is scaled to fill the
+  icon, so a small or padded upload still looks right. Use a square logo of at least 512 × 512 pixels
+  for the sharpest result.
+* The browser-tab icon (favicon) is the logo too, and so is the opening screen: Android builds it from
+  the app icon and name, and on iPhone and iPad the opening screen shows the logo and the institution's
+  name (`/api/v1/institution/app-splash/`).
+* After changing the logo, phones that already installed the app update its icon on their own, usually
+  within a day; removing and reinstalling the app shows it at once.
 * Opening the app starts on the dashboard. Shortcuts (long-press or right-click the icon) open
   Notifications, My results, and Results to review.
 * **Offline**: the app shell loads without a connection and shows a clear offline page.

@@ -65,13 +65,16 @@ def sheet_approved(sheet, actor):
            body=f"{_course(offering)} has been approved and can be published.", link=f"/results/sheets/{sheet.pk}")
     signoff_check(sheet, offering, f"/results/sheets/{sheet.pk}")
     notify(lecturers_of(offering), kind=Kind.RESULTS_APPROVED, actor=actor,
-           title=f"Results approved for {offering.course.code}", link=f"/results/courses/{offering.pk}")
+           title=f"Results approved for {offering.course.code}",
+           body=f"{_course(offering)} has been approved and is waiting to be published.",
+           link=f"/results/courses/{offering.pk}")
 
 
 def sheet_published(sheet, actor):
     offering = _offering(sheet)
     notify(lecturers_of(offering), kind=Kind.RESULTS_PUBLISHED, actor=actor,
-           title=f"Results published for {offering.course.code}", link=f"/results/courses/{offering.pk}")
+           title=f"Results published for {offering.course.code}",
+           body=f"Students can now see their results for {_course(offering)}.", link=f"/results/courses/{offering.pk}")
     notify(_students_of_sheet(sheet), kind=Kind.RESULTS_PUBLISHED, actor=actor,
            title=f"New result: {offering.course.code}",
            body=f"Your result for {_course(offering)} is now available.", link="/my-results")
@@ -90,7 +93,8 @@ def amendment_reviewed(amendment, actor):
     offering = _offering(amendment.course_result)
     outcome = "approved and applied" if amendment.status == "APPLIED" else "rejected"
     notify([amendment.requested_by], kind=Kind.AMENDMENT_REVIEWED, actor=actor,
-           title=f"Amendment {outcome}: {offering.course.code}", link="/results/amendments")
+           title=f"Amendment {outcome}: {offering.course.code}",
+           body=f"Your requested change to a result in {_course(offering)} was {outcome}.", link="/results/amendments")
 
 
 # --- Resits ---------------------------------------------------------------------------
@@ -98,7 +102,8 @@ def amendment_reviewed(amendment, actor):
 def resit_opened(resit, actor):
     offering = _offering(resit)
     notify(lecturers_of(offering), kind=Kind.RESIT_OPENED, actor=actor,
-           title=f"Resit opened for {offering.course.code}", link=f"/results/resits/{resit.pk}")
+           title=f"Resit opened for {offering.course.code}",
+           body=f"Eligible students can now register to resit {_course(offering)}.", link=f"/results/resits/{resit.pk}")
     students = User.objects.filter(student_profile__course_results__resit_entries__sheet=resit,
                                    student_profile__course_results__resit_entries__status=ResitEntryStatus.ELIGIBLE)
     deadline = f" Register before {resit.registration_deadline:%d %b %Y}." if resit.registration_deadline else ""
@@ -121,11 +126,13 @@ def resit_changed(resit, actor, status):
                body="Open the resit to see the reason.", link=link)
     elif status == "APPROVED":
         notify(users_with("can_publish_results"), kind=Kind.RESIT_UPDATED, actor=actor,
-               title=f"Resit ready to publish: {code}", link=link)
+               title=f"Resit ready to publish: {code}", body=f"The resit scores for {_course(offering)} were approved.",
+               link=link)
         signoff_check(resit, offering, link)
     elif status == "PUBLISHED":
         notify(lecturers_of(offering), kind=Kind.RESIT_UPDATED, actor=actor,
-               title=f"Resit results published for {code}", link=link)
+               title=f"Resit results published for {code}",
+               body=f"Students can now see their resit results for {_course(offering)}.", link=link)
         students = User.objects.filter(student_profile__course_results__resit_entries__sheet=resit,
                                        student_profile__course_results__resit_entries__status=ResitEntryStatus.COMPLETED)
         notify(list(students.distinct()), kind=Kind.RESULTS_PUBLISHED, actor=actor,
