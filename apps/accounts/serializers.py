@@ -22,6 +22,8 @@ class LoginSerializer(serializers.Serializer):
 class PasswordChangeSerializer(serializers.Serializer):
     current_password = serializers.CharField(trim_whitespace=False, write_only=True)
     new_password = serializers.CharField(trim_whitespace=False, write_only=True)
+    sign_out_other_devices = serializers.BooleanField(
+        default=True, help_text="Also sign out every other device and stop its notifications (recommended).")
 
     def validate(self, attrs):
         user = self.context["request"].user
@@ -59,7 +61,7 @@ class UserBulkSerializer(serializers.Serializer):
 
 
 class CurrentUserSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(source="get_full_name", read_only=True)
+    full_name = serializers.SerializerMethodField()
     role_display = serializers.CharField(source="get_role_display", read_only=True)
     capabilities = serializers.SerializerMethodField()
     roles = serializers.SerializerMethodField()
@@ -73,6 +75,11 @@ class CurrentUserSerializer(serializers.ModelSerializer):
             "roles", "offices", "capabilities", "must_change_password", "student", "email_alerts", "notification_sound",
         ]
         read_only_fields = [f for f in fields if f not in ("phone", "email_alerts", "notification_sound")]
+
+    def get_full_name(self, user) -> str:
+        """A student's name as on their student record (with the middle name); staff names as on the account."""
+        profile = getattr(user, "student_profile", None) if user.role == Role.STUDENT else None
+        return profile.full_name if profile is not None else user.get_full_name()
 
     @extend_schema_field({"type": "object", "additionalProperties": {"type": "boolean"}})
     def get_capabilities(self, user):

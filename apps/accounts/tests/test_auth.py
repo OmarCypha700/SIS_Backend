@@ -177,3 +177,14 @@ def test_login_requires_csrf_token(lecturer):
     allowed = client.post("/api/v1/auth/login/", {"email": lecturer.email, "password": PASSWORD}, format="json",
                           HTTP_X_CSRFTOKEN=client.cookies["csrftoken"].value)
     assert allowed.status_code == 200
+
+
+def test_a_students_name_includes_the_middle_name(world):
+    """The dashboard and profile show the name on the student record, middle name included."""
+    from conftest import client_for
+
+    student = world.student
+    student.middle_name = "Kofi"
+    student.save(update_fields=["middle_name"])
+    me = client_for(student.user).get("/api/v1/auth/me/").data
+    assert me["full_name"] == f"{student.first_name} Kofi {student.last_name}"

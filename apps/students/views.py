@@ -60,6 +60,7 @@ class StudentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
         "deletion_check": (Role.ADMIN,),
         "delete_record": (Role.ADMIN,),
         "bulk": REGISTRY,
+        "sign_out_everywhere": REGISTRY,
     }
     filterset_class = StudentFilter
     search_fields = ["student_number", "first_name", "last_name", "middle_name", "email"]
@@ -142,6 +143,14 @@ class StudentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cr
     @action(detail=True, methods=["post"])
     def activate(self, request, pk=None):
         return self._set_active(request, True)
+
+    @extend_schema(request=ReasonSerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"], url_path="sign-out-everywhere")
+    def sign_out_everywhere(self, request, pk=None):
+        """End every sign-in of the student's account now and stop its notifications (e.g. a lost phone)."""
+        from apps.accounts.views import sign_out_everywhere_response
+
+        return sign_out_everywhere_response(request, self.get_object().user)
 
     @extend_schema(methods=["GET"], parameters=[OpenApiParameter("size", str, enum=["full", "thumb"])],
                    responses={(200, "image/webp"): OpenApiTypes.BINARY})

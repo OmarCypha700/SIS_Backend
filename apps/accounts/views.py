@@ -28,11 +28,11 @@ from common.importing import preview_payload, records_from_confirm, records_from
 from common.permissions import RoleBasedPermission
 from common.tabular import requested_format, table_response
 
-from . import importing, signin
+from . import devices, importing, signin
 from . import services as account_services
 
 from . import appointments as appointment_services
-from .models import CAPABILITY_FIELDS, Appointment, Role, User
+from .models import CAPABILITY_FIELDS, Appointment, Role, SignedInDevice, User
 from .serializers import (
     AppointmentEndSerializer,
     AppointmentSerializer,
@@ -86,6 +86,18 @@ class LoginView(APIView):
         return Response(CurrentUserSerializer(_me_queryset_user(user)).data)
 
 
+def sign_out_everywhere_response(request, user):
+    """Administrators: end every sign-in of `user` (staff or student), with a reason for the audit log."""
+    payload = ReasonInputSerializer(data=request.data)
+    payload.is_valid(raise_exception=True)
+    if user.pk == request.user.pk:
+        raise DomainError("To sign yourself out elsewhere, use Signed-in devices on your profile.")
+    ended = devices.sign_out_everywhere(user)
+    log_action("user.signed_out_everywhere", actor=request.user, instance=user, reason=payload.validated_data["reason"],
+               summary=f"Signed {user.email} out of {ended} device{'' if ended == 1 else 's'}")
+    return Response({"signed_out": ended})
+
+
 def _delayed(seconds, wrong=False):
     prefix = "Invalid email or password. " if wrong else "Too many wrong passwords. "
     return DomainError(f"{prefix}Try again in {signin.format_wait(seconds)}.", code="sign_in_delayed",
@@ -126,11 +138,20 @@ class PasswordChangeView(APIView):
         serializer = PasswordChangeSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = request.user
+        this_device = devices.current_device_id(request)
         user.set_password(serializer.validated_data["new_password"])
         user.must_change_password = False
         user.save(update_fields=["password", "must_change_password", "updated_at"])
-        update_session_auth_hash(request, user)
-        log_action("auth.password_changed", actor=user, instance=user, summary="Changed own password")
+        update_session_auth_hash(request, user)  # this device stays signed in (with a new session id)
+        if this_device:
+            SignedInDevice.objects.filter(pk=this_device).update(session_key=request.session.session_key)
+        if serializer.validated_data["sign_out_other_devices"]:
+            ended = devices.sign_out_everywhere(user, keep_device_id=this_device)
+            summary = f"Changed own password and signed out {ended} other device{'' if ended == 1 else 's'}"
+        else:
+            devices.keep_others_signed_in(user, keep_device_id=this_device)
+            summary = "Changed own password, staying signed in on other devices"
+        log_action("auth.password_changed", actor=user, instance=user, summary=summary)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -174,6 +195,7 @@ class PasswordResetConfirmView(APIView):
         user.must_change_password = False
         user.save(update_fields=["password", "must_change_password", "updated_at"])
         signin.clear(user.email)  # a new password starts with a clean slate
+        devices.sign_out_everywhere(user)  # whoever had the old password is out, notifications included
         log_action("auth.password_reset_completed", actor=user, instance=user, summary="Password reset completed")
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -217,6 +239,8 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
             raise DomainError("You cannot deactivate your own account.")
         user.is_active = active
         user.save(update_fields=["is_active", "updated_at"])
+        if not active:
+            devices.sign_out_everywhere(user)
         log_action("user.activated" if active else "user.deactivated", actor=request.user, instance=user,
                    summary=f"{'Activated' if active else 'Deactivated'} {user.email}",
                    reason=request.data.get("reason", ""))
@@ -253,6 +277,8 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
                 raise DomainError("Already active." if active else "Already disabled.")
             user.is_active = active
             user.save(update_fields=["is_active", "updated_at"])
+            if not active:
+                devices.sign_out_everywhere(user)
             log_action("user.activated" if active else "user.deactivated", actor=actor, instance=user, reason=reason,
                        summary=f"{'Activated' if active else 'Deactivated'} {user.email}")
 
@@ -286,9 +312,16 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
         user.must_change_password = True
         user.save(update_fields=["password", "must_change_password", "updated_at"])
         signin.clear(user.email)
+        devices.sign_out_everywhere(user)
         log_action("user.password_set_by_admin", actor=request.user, instance=user,
                    summary=f"Set a temporary password for {user.email}")
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(request=ReasonInputSerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"], url_path="sign-out-everywhere")
+    def sign_out_everywhere(self, request, pk=None):
+        """End every sign-in of this account now and stop its notifications, e.g. for a lost phone."""
+        return sign_out_everywhere_response(request, self.get_object())
 
     @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["post"], url_path="clear-sign-in-delay")

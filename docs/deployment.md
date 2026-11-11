@@ -92,8 +92,9 @@ Never commit `.env`.
    cd ~/sis-backend && ~/.virtualenvs/sis/bin/python manage.py run_daily_tasks --settings=config.settings.prod
    ```
    It checks online fee payments that were left pending with Paystack, then sends whatever did not go
-   out straight away and merges waiting alert emails into digests. (`run_daily_tasks` runs
-   `reconcile_payments` and `send_pending_messages`; each can also be run on its own.)
+   out straight away and merges waiting alert emails into digests, and removes expired sign-in sessions.
+   (`run_daily_tasks` runs `reconcile_payments`, `send_pending_messages` and `clear_old_sessions`; each can
+   also be run on its own.)
    A free account allows one daily task. On a paid account, run it hourly.
    See [notifications.md](notifications.md).
 9. **Online fee payment (optional).** Follow [payments.md](payments.md): put the Paystack secret key in

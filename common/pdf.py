@@ -2,7 +2,8 @@
 Server-generated PDF documents (registration slips, result slips, transcripts) with ReportLab.
 
 Every document carries the institution header, a generation timestamp, a reference and page
-numbers. Slips and downloaded records are marked unofficial. Official transcripts are issued
+numbers, with the institution's name repeated faintly across the whole page (see _name_watermark).
+Slips and downloaded records are marked unofficial. Official transcripts are issued
 through apps.transcripts: they carry a serial number, a verification QR code and a signature block.
 """
 import io
@@ -14,6 +15,7 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.graphics.barcode.qr import QrCodeWidget
 from reportlab.graphics.shapes import Drawing
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -27,6 +29,11 @@ STYLE_H2 = ParagraphStyle("SisH2", parent=_styles["Heading3"], fontSize=10.5, sp
 STYLE_BODY = ParagraphStyle("SisBody", parent=_styles["Normal"], fontSize=9, leading=12)
 STYLE_SMALL = ParagraphStyle("SisSmall", parent=_styles["Normal"], fontSize=7.5, textColor=colors.grey)
 GRID = colors.HexColor("#d4d4d8")
+# The institution's name, repeated across every page: 12 pt, horizontal, faint enough to read through.
+NAME_MARK_FONT, NAME_MARK_SIZE = "Helvetica", 12
+NAME_MARK_COLOUR = colors.Color(0.45, 0.45, 0.45, alpha=0.11)
+NAME_MARK_ROW = 30  # points between rows
+NAME_MARK_GAP = 28  # points between repeats on a row
 HEAD = colors.HexColor("#f4f4f5")
 
 
@@ -87,8 +94,32 @@ def _data_table(header, rows, widths, align_right=(), footer=None):
     return table
 
 
+def _name_watermark(canvas, name):
+    """
+    The institution's name in horizontal rows over the whole page, every other row shifted by half a
+    repeat (like brickwork) so there are no plain columns. Drawn over the content, but faint, so it
+    shows through tables and images and cannot simply be removed by editing what is underneath.
+    """
+    if not name:
+        return
+    width, height = A4
+    step = stringWidth(name, NAME_MARK_FONT, NAME_MARK_SIZE) + NAME_MARK_GAP
+    canvas.saveState()
+    canvas.setFont(NAME_MARK_FONT, NAME_MARK_SIZE)
+    canvas.setFillColor(NAME_MARK_COLOUR)
+    row, y = 0, height - NAME_MARK_ROW / 2
+    while y > -NAME_MARK_SIZE:
+        x = -(step / 2 if row % 2 else 0) - step / 4
+        while x < width:
+            canvas.drawString(x, y, name)
+            x += step
+        row, y = row + 1, y - NAME_MARK_ROW
+    canvas.restoreState()
+
+
 def _render(story, *, reference, footer_text="", watermark=""):
     buffer = io.BytesIO()
+    institution = InstitutionProfile.load().name
     generated = timezone.localtime().strftime("%d %b %Y %H:%M")
 
     def on_page(canvas, doc):
@@ -111,7 +142,8 @@ def _render(story, *, reference, footer_text="", watermark=""):
         canvas.restoreState()
 
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=12 * mm,
-                            bottomMargin=18 * mm, title=reference, author=InstitutionProfile.load().name)
+                            bottomMargin=18 * mm, title=reference, author=institution)
+    doc.afterPage = lambda: _name_watermark(doc.canv, institution)  # after the content: on top, every page
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
     return buffer.getvalue()
 

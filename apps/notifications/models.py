@@ -52,6 +52,10 @@ class PushSubscription(models.Model):
     p256dh = models.CharField(max_length=200)
     auth = models.CharField(max_length=100)
     user_agent = models.CharField(max_length=300, blank=True)
+    # The sign-in it was turned on from: signing that device out (or changing the password elsewhere)
+    # stops its notifications too. Kept when the session simply expires, so alerts keep coming.
+    device = models.ForeignKey("accounts.SignedInDevice", null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name="push_subscriptions")
     created_at = models.DateTimeField(auto_now_add=True)
     last_success_at = models.DateTimeField(null=True, blank=True)
     failures = models.PositiveSmallIntegerField(default=0)

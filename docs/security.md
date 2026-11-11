@@ -12,7 +12,17 @@
   Login itself is CSRF-protected (prevents login CSRF).
 * Passwords use Django's PBKDF2 hasher and validators (minimum 10 characters, not common,
   not numeric-only, not similar to the user's details).
-* Sessions expire after 8 hours of inactivity (`SESSION_COOKIE_AGE`, sliding).
+* Sessions expire after 8 hours of inactivity (`SESSION_COOKIE_AGE`, sliding), and in any case a set time after
+  signing in: 7 days for students and 24 hours for staff by default (Institution settings,
+  `apps/accounts/middleware.py`).
+* **Signed-in devices** (`apps/accounts/devices.py`): each sign-in is recorded with its browser, system, network
+  address and last activity. People see their sign-ins on the Profile page and can sign out any other device or
+  all of them; signing a device out also stops its push notifications. Administrators (staff) and the registry
+  (students) can sign an account out everywhere, with a reason. All of this is audited.
+* A password change signs out the other devices and removes their push notifications (the person can choose to
+  stay signed in elsewhere). A password reset, a temporary password set by an administrator, or disabling an
+  account ends every sign-in and removes every push subscription.
+* Expired sessions and their device records are removed by the daily task (`clear_old_sessions`).
 * Rate limits: login 10/min, password reset 5/hour, password change 10/hour per client, plus
   login 20/hour and password reset 3/hour per email address. The client address comes from
   `X-Forwarded-For` only as far as `NUM_PROXIES` trusted proxies, so clients cannot choose it.

@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from . import passkey_views, views
+from . import device_views, passkey_views, views
 
 router = DefaultRouter(trailing_slash=True)
 router.register("users", views.UserViewSet, basename="user")
@@ -15,6 +15,10 @@ urlpatterns = [
     path("auth/password/change/", views.PasswordChangeView.as_view(), name="auth-password-change"),
     path("auth/password/reset/", views.PasswordResetRequestView.as_view(), name="auth-password-reset"),
     path("auth/password/reset/confirm/", views.PasswordResetConfirmView.as_view(), name="auth-password-reset-confirm"),
+    path("auth/devices/", device_views.SignedInDeviceListView.as_view(), name="auth-devices"),
+    path("auth/devices/<int:pk>/", device_views.SignedInDeviceDetailView.as_view(), name="auth-device"),
+    path("auth/devices/sign-out-others/", device_views.SignOutOtherDevicesView.as_view(),
+         name="auth-devices-sign-out-others"),
     path("auth/passkeys/", passkey_views.PasskeyListView.as_view(), name="auth-passkeys"),
     path("auth/passkeys/<int:pk>/", passkey_views.PasskeyDetailView.as_view(), name="auth-passkey"),
     path("auth/passkeys/register/options/", passkey_views.PasskeyRegisterOptionsView.as_view(),

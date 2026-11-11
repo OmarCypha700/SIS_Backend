@@ -18,3 +18,5 @@ e2e.sqlite3
 .test-media/
 .test-private/
 skills-lock.json
+watermark-samples/
+test-results/

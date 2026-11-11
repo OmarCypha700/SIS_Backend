@@ -129,6 +129,7 @@ def test_list_query_count_is_constant(world, registrar, django_assert_max_num_qu
     for _ in range(25):
         make_student(world.programme, world.l100)
     client = client_for(registrar)
+    client.get("/api/v1/auth/me/")  # warm the per-process caches (sign-in length settings)
     with django_assert_max_num_queries(8):
         client.get("/api/v1/students/?page_size=25")
 

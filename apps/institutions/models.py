@@ -97,6 +97,16 @@ class InstitutionProfile(TimeStampedModel):
         help_text="Largest transaction fee for one payment, if the provider caps it. Blank: no cap.",
     )
 
+    # Sign-in sessions: besides 8 hours without activity, a sign-in ends this long after it started.
+    student_session_days = models.PositiveSmallIntegerField(
+        default=7, validators=[MinValueValidator(1), MaxValueValidator(90)],
+        help_text="Students sign in again after this many days, however active they are.",
+    )
+    staff_session_hours = models.PositiveSmallIntegerField(
+        default=24, validators=[MinValueValidator(1), MaxValueValidator(720)],
+        help_text="Staff sign in again after this many hours, however active they are.",
+    )
+
     # Results policy
     amendments_require_second_approver = models.BooleanField(
         default=True, help_text="The person approving an amendment must differ from the requester."
@@ -142,6 +152,9 @@ class InstitutionProfile(TimeStampedModel):
     def save(self, *args, **kwargs):
         self.pk = 1
         super().save(*args, **kwargs)
+        from apps.accounts.devices import forget_session_limits
+
+        forget_session_limits()  # sign-in lengths are cached for every request
 
     def delete(self, *args, **kwargs):
         raise ValidationError("The institution profile cannot be deleted.")

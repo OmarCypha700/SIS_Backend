@@ -92,6 +92,10 @@ def set_active(student, *, active, reason, actor):
     user = student.user
     user.is_active = active
     user.save(update_fields=["is_active", "updated_at"])
+    if not active:
+        from apps.accounts.devices import sign_out_everywhere
+
+        sign_out_everywhere(user)
     student.is_archived = not active
     student.save(update_fields=["is_archived", "updated_at"])
     log_action("student.activated" if active else "student.deactivated", actor=actor, instance=student,

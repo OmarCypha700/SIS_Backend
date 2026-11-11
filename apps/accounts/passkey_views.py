@@ -10,7 +10,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from . import passkeys
-from .models import User
+from .models import SignInMethod, User
 from .serializers import CurrentUserSerializer
 
 
@@ -83,6 +83,7 @@ class PasskeySignInView(APIView):
         payload = PasskeyCredentialSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         user = passkeys.authenticate(request, payload.validated_data["credential"])
+        request.sign_in_method = SignInMethod.PASSKEY  # shown in the list of signed-in devices
         login(request, user, backend="django.contrib.auth.backends.ModelBackend")
         user = User.objects.select_related("student_profile__programme", "student_profile__current_level").get(pk=user.pk)
         return Response(CurrentUserSerializer(user).data)

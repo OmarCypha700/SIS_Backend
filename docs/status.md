@@ -5,7 +5,9 @@
 * **Foundation** – Django 5.2 + DRF modular monolith, environment-based settings (SQLite default,
   PostgreSQL via `DATABASE_URL`), OpenAPI docs, consistent errors and pagination, request ids.
 * **Authentication** – session cookies + CSRF through a same-origin proxy, login/logout, password
-  change, email password reset, temporary passwords for new staff, rate limiting, account status checks.
+  change, email password reset, temporary passwords for new staff, rate limiting, account status checks,
+  signed-in devices (sign out one or all others; administrators sign an account out everywhere) and a
+  maximum sign-in length (7 days students, 24 hours staff, configurable).
 * **Roles and permissions** – Administrator, Registrar, Lecturer, Results Officer, Student; separate
   approve/publish/amend capabilities; deny-by-default views; object-level scoping.
 * **Institution configuration** – identity, logo, colour, contacts, time zone, numbering formats,

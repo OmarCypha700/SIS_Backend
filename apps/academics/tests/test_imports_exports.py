@@ -234,3 +234,58 @@ def test_pdf_documents(world, registrar):
     staff = client_for(registrar).get(f"/api/v1/students/{world.student.pk}/transcript-pdf/?published_only=false")
     assert staff.status_code == 200 and staff.content[:4] == b"%PDF"
     assert AuditLog.objects.filter(action="student.transcript_generated").exists()
+
+
+def test_every_pdf_page_carries_the_institution_name_across_the_whole_page(world):
+    """12 pt, horizontal rows over the whole A4 page, every other row offset; drawn on each page."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    from common import pdf as pdf_module
+
+    class Canvas:
+        def __init__(self):
+            self.calls, self.font = [], None
+
+        def saveState(self):
+            pass
+
+        def restoreState(self):
+            pass
+
+        def setFont(self, name, size):
+            self.font = (name, size)
+
+        def setFillColor(self, colour):
+            self.colour = colour
+
+        def rotate(self, angle):  # pragma: no cover - must never be called
+            raise AssertionError("The name watermark is horizontal")
+
+        def drawString(self, x, y, text):
+            self.calls.append((x, y, text))
+
+    canvas = Canvas()
+    pdf_module._name_watermark(canvas, "Northridge College")
+    assert canvas.font == ("Helvetica", 12)
+    assert canvas.colour.alpha < 0.2  # faint: the content stays readable
+    assert {text for *_, text in canvas.calls} == {"Northridge College"}
+    rows = sorted({y for _, y, _ in canvas.calls}, reverse=True)
+    assert rows[0] > A4[1] - 30 and rows[-1] < 30 and len(rows) > 25  # top to bottom
+    for y in rows:
+        xs = sorted(x for x, row_y, _ in canvas.calls if row_y == y)
+        width = stringWidth("Northridge College", "Helvetica", 12)
+        assert xs[0] <= 0 and xs[-1] + width >= A4[0] - pdf_module.NAME_MARK_GAP  # edge to edge
+    first, second = (min(x for x, row_y, _ in canvas.calls if row_y == y) for y in rows[:2])
+    assert first != second  # alternate rows are offset
+
+    # A real download carries it, named after the institution.
+    drawn = []
+    original = pdf_module._name_watermark
+    pdf_module._name_watermark = lambda c, name: drawn.append(name)
+    try:
+        content = client_for(world.student.user).get("/api/v1/my-results/transcript-pdf/").content
+    finally:
+        pdf_module._name_watermark = original
+    assert content[:4] == b"%PDF"
+    assert drawn and set(drawn) == {world.profile.name}

@@ -21,6 +21,11 @@ the transcript will be **interim**: the programme is not marked Completed or Gra
 results are still unpublished. Unpublished results never appear on an official transcript. Interim
 transcripts are titled "(interim)", say why, and carry an INTERIM watermark.
 
+Every PDF the portal produces (official and student copies of transcripts, result slips, registration
+slips, receipts and fee statements) has the institution's name repeated faintly across the whole page:
+12 pt, horizontal rows, every other row offset. It is drawn over the content, so editing the text
+underneath does not remove it, but it is light enough to read and photocopy through.
+
 The person issuing it enters who it is for (required) and chooses how it is signed:
 
 * **Print for hand signing and stamping** (the default). The PDF has a signature line, the

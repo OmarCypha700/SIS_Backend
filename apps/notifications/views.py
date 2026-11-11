@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.accounts.devices import current_device_id
 from apps.accounts.models import Role
 from common.exceptions import DomainError
 from common.permissions import RoleBasedPermission
@@ -85,7 +86,8 @@ class PushSubscribeView(APIView):
         subscription, _ = PushSubscription.objects.update_or_create(
             endpoint=data["endpoint"],
             defaults={"user": request.user, "p256dh": data["keys"]["p256dh"], "auth": data["keys"]["auth"],
-                      "user_agent": request.headers.get("User-Agent", "")[:300], "failures": 0},
+                      "user_agent": request.headers.get("User-Agent", "")[:300], "failures": 0,
+                      "device_id": current_device_id(request)},
         )
         # Keep the newest few devices per person; older ones stop receiving pushes.
         stale = (PushSubscription.objects.filter(user=request.user).order_by("-created_at", "-pk")

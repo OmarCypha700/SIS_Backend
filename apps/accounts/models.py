@@ -305,3 +305,29 @@ class Passkey(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.user_id})"
+
+
+class SignInMethod(models.TextChoices):
+    PASSWORD = "PASSWORD", "Password"
+    PASSKEY = "PASSKEY", "Passkey"
+
+
+class SignedInDevice(models.Model):
+    """
+    One signed-in session, so people can see where they are signed in and end any of them.
+    The session itself stays in Django's session table; this row describes it.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="signed_in_devices")
+    session_key = models.CharField(max_length=40, unique=True)
+    method = models.CharField(max_length=10, choices=SignInMethod.choices, default=SignInMethod.PASSWORD)
+    user_agent = models.CharField(max_length=300, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    signed_in_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-last_seen_at", "-pk"]
+
+    def __str__(self):
+        return f"Session {self.pk} for {self.user_id}"
