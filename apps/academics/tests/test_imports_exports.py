@@ -272,7 +272,7 @@ def test_every_pdf_page_carries_the_institution_name_across_the_whole_page(world
     pdf_module._name_watermark(canvas, "Northridge College")
     assert canvas.font == ("Helvetica", 12)
     # Solid light grey, so black-and-white printers print it; multiplied, so text under it stays black.
-    assert canvas.colour.alpha == 1 and 0.8 <= canvas.colour.red == canvas.colour.blue <= 0.88
+    assert canvas.colour.alpha == 1 and 0.78 <= canvas.colour.red == canvas.colour.blue <= 0.82  # about 20%
     assert canvas.blend == "Multiply"
     assert {text for *_, text in canvas.calls} == {"Northridge College"}
     rows = sorted({y for _, y, _ in canvas.calls}, reverse=True)
@@ -318,3 +318,23 @@ def test_signature_and_seal_images_are_cropped_to_the_ink_with_the_paper_made_tr
     blank = tmp_path / "blank.png"
     PILImage.new("RGB", (300, 300), (255, 255, 255)).save(blank)
     assert pdf_module._ink_only(str(blank)) is None  # nothing to print: the space is left to sign by hand
+
+
+def test_the_interim_stamp_is_printable_and_drawn_over_the_content():
+    """Like the name, the INTERIM / CANCELLED word is solid grey in multiply mode, so mono printers print it."""
+    from common import pdf as pdf_module
+
+    calls = []
+
+    class Canvas:
+        def __getattr__(self, name):
+            return lambda *args: calls.append((name, args))
+
+    pdf_module._stamp_watermark(Canvas(), "INTERIM")
+    names = [name for name, _ in calls]
+    assert ("setBlendMode", ("Multiply",)) in calls
+    colour = next(args[0] for name, args in calls if name == "setFillColor")
+    assert colour.alpha == 1 and colour.red <= 0.8  # at least as dark as the name watermark
+    assert ("drawCentredString", (0, 0, "INTERIM")) in calls
+    assert names.index("restoreState") == len(names) - 1
+    pdf_module._stamp_watermark(Canvas(), "")  # nothing to stamp: nothing drawn

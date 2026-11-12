@@ -30,11 +30,15 @@ STYLE_BODY = ParagraphStyle("SisBody", parent=_styles["Normal"], fontSize=9, lea
 STYLE_SMALL = ParagraphStyle("SisSmall", parent=_styles["Normal"], fontSize=7.5, textColor=colors.grey)
 GRID = colors.HexColor("#d4d4d8")
 # The institution's name, repeated across every page: 12 pt, horizontal, faint enough to read through.
-# A solid 15% grey, not a see-through one: black-and-white laser printers (and toner-saving modes) drop
+# A solid 20% grey, not a see-through one: black-and-white laser printers (and toner-saving modes) drop
 # tones much lighter than about 10%, so a transparent grey vanished on paper. It is drawn in "multiply"
 # mode, which only darkens the white paper: text and lines underneath stay exactly as dark as they are.
 NAME_MARK_FONT, NAME_MARK_SIZE = "Helvetica", 12
-NAME_MARK_COLOUR = colors.Color(0.85, 0.85, 0.85)  # 15% grey
+NAME_MARK_COLOUR = colors.Color(0.80, 0.80, 0.80)  # 20% grey
+# A word across the middle of each page ("INTERIM", "CANCELLED"): large, diagonal, and drawn the same
+# printable way (solid grey, multiply), a little darker than the name so it stands out from it.
+STAMP_FONT, STAMP_SIZE, STAMP_ANGLE = "Helvetica-Bold", 64, 40
+STAMP_COLOUR = colors.Color(0.72, 0.72, 0.72)  # 28% grey
 NAME_MARK_ROW = 30  # points between rows
 NAME_MARK_GAP = 28  # points between repeats on a row
 HEAD = colors.HexColor("#f4f4f5")
@@ -121,6 +125,20 @@ def _name_watermark(canvas, name):
     canvas.restoreState()
 
 
+def _stamp_watermark(canvas, word):
+    """A large diagonal word across the middle of the page, over the content, printable in black and white."""
+    if not word:
+        return
+    canvas.saveState()
+    canvas.setBlendMode("Multiply")
+    canvas.setFont(STAMP_FONT, STAMP_SIZE)
+    canvas.setFillColor(STAMP_COLOUR)
+    canvas.translate(A4[0] / 2, A4[1] / 2)
+    canvas.rotate(STAMP_ANGLE)
+    canvas.drawCentredString(0, 0, word)
+    canvas.restoreState()
+
+
 def _render(story, *, reference, footer_text="", watermark=""):
     buffer = io.BytesIO()
     institution = InstitutionProfile.load().name
@@ -128,14 +146,6 @@ def _render(story, *, reference, footer_text="", watermark=""):
 
     def on_page(canvas, doc):
         canvas.saveState()
-        if watermark:
-            canvas.setFont("Helvetica-Bold", 64)
-            canvas.setFillColor(colors.Color(0.85, 0.85, 0.85, alpha=0.35))
-            canvas.translate(A4[0] / 2, A4[1] / 2)
-            canvas.rotate(40)
-            canvas.drawCentredString(0, 0, watermark)
-            canvas.rotate(-40)
-            canvas.translate(-A4[0] / 2, -A4[1] / 2)
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(colors.grey)
         text = f"Generated {generated} · Reference {reference}"
@@ -147,7 +157,11 @@ def _render(story, *, reference, footer_text="", watermark=""):
 
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=12 * mm,
                             bottomMargin=18 * mm, title=reference, author=institution)
-    doc.afterPage = lambda: _name_watermark(doc.canv, institution)  # after the content: on top, every page
+    def after_page():  # after the content: on top of it, on every page
+        _name_watermark(doc.canv, institution)
+        _stamp_watermark(doc.canv, watermark)
+
+    doc.afterPage = after_page
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
     return buffer.getvalue()
 

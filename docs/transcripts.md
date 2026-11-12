@@ -24,9 +24,10 @@ transcripts are titled "(interim)", say why, and carry an INTERIM watermark.
 Every PDF the portal produces (official and student copies of transcripts, result slips, registration
 slips, receipts and fee statements) has the institution's name repeated faintly across the whole page:
 12 pt, horizontal rows, every other row offset. It is drawn over the content, so editing the text
-underneath does not remove it, but it is light enough to read and photocopy through. It is a solid 15%
+underneath does not remove it, but it is light enough to read and photocopy through. It is a solid 20%
 grey drawn in "multiply" mode, so black-and-white printers print it (they drop tones lighter than about
-10%) while text under it stays black.
+10%) while text under it stays black. The INTERIM (and, on receipts, CANCELLED) stamp is drawn the same
+way, in 28% grey, over the content.
 
 The uploaded signature prints in a 62 × 22 mm space and the seal in 40 × 40 mm, each keeping its shape.
 Blank margins are cropped and the paper background is made transparent, so a phone photo of a signature
