@@ -30,8 +30,11 @@ STYLE_BODY = ParagraphStyle("SisBody", parent=_styles["Normal"], fontSize=9, lea
 STYLE_SMALL = ParagraphStyle("SisSmall", parent=_styles["Normal"], fontSize=7.5, textColor=colors.grey)
 GRID = colors.HexColor("#d4d4d8")
 # The institution's name, repeated across every page: 12 pt, horizontal, faint enough to read through.
+# A solid 15% grey, not a see-through one: black-and-white laser printers (and toner-saving modes) drop
+# tones much lighter than about 10%, so a transparent grey vanished on paper. It is drawn in "multiply"
+# mode, which only darkens the white paper: text and lines underneath stay exactly as dark as they are.
 NAME_MARK_FONT, NAME_MARK_SIZE = "Helvetica", 12
-NAME_MARK_COLOUR = colors.Color(0.45, 0.45, 0.45, alpha=0.11)
+NAME_MARK_COLOUR = colors.Color(0.85, 0.85, 0.85)  # 15% grey
 NAME_MARK_ROW = 30  # points between rows
 NAME_MARK_GAP = 28  # points between repeats on a row
 HEAD = colors.HexColor("#f4f4f5")
@@ -105,6 +108,7 @@ def _name_watermark(canvas, name):
     width, height = A4
     step = stringWidth(name, NAME_MARK_FONT, NAME_MARK_SIZE) + NAME_MARK_GAP
     canvas.saveState()
+    canvas.setBlendMode("Multiply")
     canvas.setFont(NAME_MARK_FONT, NAME_MARK_SIZE)
     canvas.setFillColor(NAME_MARK_COLOUR)
     row, y = 0, height - NAME_MARK_ROW / 2
@@ -254,11 +258,54 @@ def _qr(url, size=26 * mm):
     return drawing
 
 
+# Printed sizes of the uploaded signature and seal (the image is fitted inside, keeping its shape).
+SIGNATURE_BOX = (62 * mm, 22 * mm)
+SEAL_BOX = (40 * mm, 40 * mm)
+
+
+def _ink_only(path):
+    """
+    The uploaded signature or seal ready to print: blank margins cropped (so the ink fills the space
+    instead of a sheet of paper around it), the paper background made transparent (so a photographed
+    signature does not print as a grey patch), and scaled to print quality. Returns PNG bytes, or None.
+    """
+    from PIL import Image as PILImage, ImageChops, ImageOps, ImageStat
+
+    with PILImage.open(path) as source:
+        image = ImageOps.exif_transpose(source).convert("RGBA")
+    red, green, blue, alpha = image.split()
+    darkest = ImageChops.darker(ImageChops.darker(red, green), blue)  # how much ink each pixel has
+    # The paper's brightness, from a strip round the edge (phone photos of paper are rarely pure white).
+    edge = max(2, min(image.size) // 50)
+    strips = [darkest.crop(box) for box in ((0, 0, image.width, edge), (0, image.height - edge, image.width, image.height),
+                                            (0, 0, edge, image.height), (image.width - edge, 0, image.width, image.height))]
+    paper = sorted(ImageStat.Stat(strip).median[0] for strip in strips)[2]  # ignore ink touching one edge
+    threshold = max(100, min(240, paper - 40))
+    # Fully opaque where clearly ink, fading out over 40 levels towards the paper colour.
+    ink = darkest.point(lambda v: 0 if v >= threshold else min(255, int((threshold - v) * 255 / 40)))
+    alpha = ImageChops.darker(alpha, ink)
+    image.putalpha(alpha)
+    box = alpha.point(lambda v: 255 if v > 24 else 0).getbbox()
+    if box is None:
+        return None
+    pad = max(2, int(max(box[2] - box[0], box[3] - box[1]) * 0.02))
+    image = image.crop((max(box[0] - pad, 0), max(box[1] - pad, 0),
+                        min(box[2] + pad, image.width), min(box[3] + pad, image.height)))
+    image.thumbnail((1200, 1200))  # about 500 dpi at the printed size: sharp, and a small PDF
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG", optimize=True)
+    buffer.seek(0)
+    return buffer
+
+
 def _private_image(field, width, height):
     if not field:
         return None
     try:
-        return Image(field.path, width=width, height=height, kind="proportional")
+        prepared = _ink_only(field.path)
+        if prepared is None:
+            return None
+        return Image(prepared, width=width, height=height, kind="proportional")
     except (OSError, ValueError, NotImplementedError):
         return None
 
@@ -266,11 +313,11 @@ def _private_image(field, width, height):
 def _attestation(profile, transcript):
     """Signature and seal: the uploaded images, or blank spaces to sign and stamp by hand."""
     digital = transcript.signing == "DIGITAL"
-    signature = _private_image(profile.transcript_signature, 45 * mm, 16 * mm) if digital else None
-    seal = _private_image(profile.transcript_seal, 30 * mm, 30 * mm) if digital else None
+    signature = _private_image(profile.transcript_signature, *SIGNATURE_BOX) if digital else None
+    seal = _private_image(profile.transcript_seal, *SEAL_BOX) if digital else None
     name = profile.transcript_signatory_name or ("" if digital else "." * 40)
     left = [
-        signature or Spacer(1, 16 * mm),
+        signature or Spacer(1, SIGNATURE_BOX[1]),
         Paragraph("_" * 42, STYLE_BODY),
         Paragraph("Signature", STYLE_SMALL),
         Paragraph(f"Name: {_escape(name)}", STYLE_BODY),
@@ -279,7 +326,7 @@ def _attestation(profile, transcript):
                               else "." * 40), STYLE_BODY),
     ]
     stamp = seal or Table([[Paragraph("Official stamp / seal", ParagraphStyle(
-        "stamp", parent=STYLE_SMALL, alignment=TA_CENTER))]], colWidths=[40 * mm], rowHeights=[30 * mm],
+        "stamp", parent=STYLE_SMALL, alignment=TA_CENTER))]], colWidths=[SEAL_BOX[0]], rowHeights=[SEAL_BOX[1]],
         style=TableStyle([("BOX", (0, 0), (-1, -1), 0.6, colors.grey), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                           ("LINESTYLE", (0, 0), (-1, -1), 0.6)]))
     table = Table([[left, stamp]], colWidths=[110 * mm, 70 * mm])

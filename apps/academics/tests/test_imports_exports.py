@@ -259,6 +259,9 @@ def test_every_pdf_page_carries_the_institution_name_across_the_whole_page(world
         def setFillColor(self, colour):
             self.colour = colour
 
+        def setBlendMode(self, mode):
+            self.blend = mode
+
         def rotate(self, angle):  # pragma: no cover - must never be called
             raise AssertionError("The name watermark is horizontal")
 
@@ -268,7 +271,9 @@ def test_every_pdf_page_carries_the_institution_name_across_the_whole_page(world
     canvas = Canvas()
     pdf_module._name_watermark(canvas, "Northridge College")
     assert canvas.font == ("Helvetica", 12)
-    assert canvas.colour.alpha < 0.2  # faint: the content stays readable
+    # Solid light grey, so black-and-white printers print it; multiplied, so text under it stays black.
+    assert canvas.colour.alpha == 1 and 0.8 <= canvas.colour.red == canvas.colour.blue <= 0.88
+    assert canvas.blend == "Multiply"
     assert {text for *_, text in canvas.calls} == {"Northridge College"}
     rows = sorted({y for _, y, _ in canvas.calls}, reverse=True)
     assert rows[0] > A4[1] - 30 and rows[-1] < 30 and len(rows) > 25  # top to bottom
@@ -289,3 +294,27 @@ def test_every_pdf_page_carries_the_institution_name_across_the_whole_page(world
         pdf_module._name_watermark = original
     assert content[:4] == b"%PDF"
     assert drawn and set(drawn) == {world.profile.name}
+
+
+def test_signature_and_seal_images_are_cropped_to_the_ink_with_the_paper_made_transparent(tmp_path):
+    """A photo of a signature on greyish paper with wide margins prints as the signature alone, large."""
+    from PIL import Image as PILImage
+
+    from common import pdf as pdf_module
+
+    photo = PILImage.new("RGB", (2000, 1500), (214, 214, 210))  # paper in room light, not pure white
+    for x in range(800, 1200):  # the "signature": a dark stroke in the middle
+        for y in range(700, 760):
+            photo.putpixel((x, y), (20, 30, 90))
+    path = tmp_path / "signature.jpg"
+    photo.save(path, quality=95)
+
+    prepared = PILImage.open(pdf_module._ink_only(str(path)))
+    assert prepared.mode == "RGBA"
+    assert 400 <= prepared.width <= 440 and 60 <= prepared.height <= 90  # the margins are gone
+    assert prepared.getpixel((2, 2))[3] == 0  # paper: transparent
+    assert prepared.getpixel((prepared.width // 2, prepared.height // 2))[3] == 255  # ink: solid
+
+    blank = tmp_path / "blank.png"
+    PILImage.new("RGB", (300, 300), (255, 255, 255)).save(blank)
+    assert pdf_module._ink_only(str(blank)) is None  # nothing to print: the space is left to sign by hand
