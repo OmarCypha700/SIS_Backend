@@ -1,6 +1,8 @@
 """CSV/Excel imports and exports, marks import, course and staff imports, and PDF documents."""
 import io
+import os
 import re
+import time
 
 import pytest
 from django.core import mail
@@ -338,3 +340,27 @@ def test_the_interim_stamp_is_printable_and_drawn_over_the_content():
     assert ("drawCentredString", (0, 0, "INTERIM")) in calls
     assert names.index("restoreState") == len(names) - 1
     pdf_module._stamp_watermark(Canvas(), "")  # nothing to stamp: nothing drawn
+
+
+def test_document_images_are_embedded_at_print_size_and_prepared_once(tmp_path, settings):
+    """A huge upload is scaled to print resolution (a small, quick PDF) and reused until the file changes."""
+    from unittest import mock
+
+    from PIL import Image as PILImage
+
+    from common import pdf as pdf_module
+
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    path = tmp_path / "logo.png"
+    PILImage.new("RGBA", (4000, 3000), (20, 60, 160, 255)).save(path)
+
+    with mock.patch.object(pdf_module, "_fitted", wraps=pdf_module._fitted) as fitted:
+        first = PILImage.open(pdf_module._prepared(str(path), pdf_module.LOGO_BOX))
+        PILImage.open(pdf_module._prepared(str(path), pdf_module.LOGO_BOX))
+        assert fitted.call_count == 1  # the second document reuses the prepared logo
+        assert max(first.size) == pdf_module._print_pixels(pdf_module.LOGO_BOX) < 300  # 18 mm at 300 dpi
+
+        PILImage.new("RGBA", (500, 500), (200, 0, 0, 255)).save(path)  # a new logo is uploaded
+        os.utime(path, ns=(time.time_ns(), time.time_ns() + 10_000_000))
+        pdf_module._prepared(str(path), pdf_module.LOGO_BOX)
+        assert fitted.call_count == 2

@@ -6,8 +6,13 @@ numbers, with the institution's name repeated faintly across the whole page (see
 Slips and downloaded records are marked unofficial. Official transcripts are issued
 through apps.transcripts: they carry a serial number, a verification QR code and a signature block.
 """
+import hashlib
 import io
+import logging
+import os
+import time
 
+from django.core.cache import cache
 from django.http import HttpResponse
 from django.utils import timezone
 from reportlab.lib import colors
@@ -21,6 +26,8 @@ from reportlab.graphics.shapes import Drawing
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from apps.institutions.models import InstitutionProfile
+
+logger = logging.getLogger("sis.pdf")
 
 _styles = getSampleStyleSheet()
 STYLE_TITLE = ParagraphStyle("SisTitle", parent=_styles["Title"], fontSize=14, spaceAfter=2)
@@ -52,7 +59,8 @@ def _header(profile, title):
     parts = []
     if profile.logo:
         try:
-            logo = Image(profile.logo.path, width=18 * mm, height=18 * mm, kind="proportional")
+            logo = Image(_prepared(profile.logo.path, LOGO_BOX), width=LOGO_BOX[0], height=LOGO_BOX[1],
+                         kind="proportional")
             logo.hAlign = "CENTER"
             parts.append(logo)
         except (OSError, ValueError):
@@ -162,8 +170,14 @@ def _render(story, *, reference, footer_text="", watermark=""):
         _stamp_watermark(doc.canv, watermark)
 
     doc.afterPage = after_page
+    started = time.perf_counter()
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
-    return buffer.getvalue()
+    seconds = time.perf_counter() - started
+    content = buffer.getvalue()
+    # Shows in the server log, to tell a slow server from a slow document.
+    (logger.warning if seconds > 3 else logger.info)(
+        "PDF %s: %d page(s), %d KB in %.2f s", reference, doc.page, len(content) // 1024, seconds)
+    return content
 
 
 def pdf_response(content, filename):
@@ -275,9 +289,49 @@ def _qr(url, size=26 * mm):
 # Printed sizes of the uploaded signature and seal (the image is fitted inside, keeping its shape).
 SIGNATURE_BOX = (62 * mm, 22 * mm)
 SEAL_BOX = (40 * mm, 40 * mm)
+LOGO_BOX = (18 * mm, 18 * mm)
+# Images are embedded at print resolution, not as uploaded: a 12-megapixel logo made every PDF about
+# 1 MB and took seconds to compress on a slow server. Prepared images are cached until the file changes.
+PRINT_DPI = 300
+IMAGE_CACHE_SECONDS = 30 * 24 * 60 * 60
+IMAGE_VERSION = 1  # bump when the preparation changes, so cached images are made again
 
 
-def _ink_only(path):
+def _print_pixels(box):
+    """The largest side, in pixels, that prints sharply in `box` (points) at PRINT_DPI."""
+    return max(1, round(max(box) / 72 * PRINT_DPI))
+
+
+def _fitted(path, max_pixels):
+    """A logo scaled down to print size, transparency kept. Returns a PNG in a buffer."""
+    from PIL import Image as PILImage, ImageOps
+
+    with PILImage.open(path) as source:
+        source.draft("RGB", (max_pixels * 2, max_pixels * 2))  # JPEGs decode straight at a smaller size
+        image = ImageOps.exif_transpose(source)
+        image = image.convert("RGBA" if "A" in image.getbands() or "transparency" in image.info else "RGB")
+    image.thumbnail((max_pixels, max_pixels))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
+
+def _prepared(path, box, *, ink=False):
+    """The image at `path` ready for the PDF (see _fitted / _ink_only), cached by file and size. None if blank."""
+    stat = os.stat(path)
+    max_pixels = _print_pixels(box)
+    key = "pdf-image:" + hashlib.sha256(
+        f"{path}|{stat.st_mtime_ns}|{stat.st_size}|{max_pixels}|{ink}|{IMAGE_VERSION}".encode()).hexdigest()
+    data = cache.get(key)
+    if data is None:
+        prepared = _ink_only(path, max_pixels) if ink else _fitted(path, max_pixels)
+        data = prepared.getvalue() if prepared is not None else b""
+        cache.set(key, data, timeout=IMAGE_CACHE_SECONDS)
+    return io.BytesIO(data) if data else None
+
+
+def _ink_only(path, max_pixels=1200):
     """
     The uploaded signature or seal ready to print: blank margins cropped (so the ink fills the space
     instead of a sheet of paper around it), the paper background made transparent (so a photographed
@@ -286,7 +340,10 @@ def _ink_only(path):
     from PIL import Image as PILImage, ImageChops, ImageOps, ImageStat
 
     with PILImage.open(path) as source:
+        source.draft("RGB", (max_pixels * 3, max_pixels * 3))  # JPEGs decode straight at a smaller size
         image = ImageOps.exif_transpose(source).convert("RGBA")
+    # Work on a copy a few times the print size: enough to find the edges, far less to process.
+    image.thumbnail((max_pixels * 3, max_pixels * 3))
     red, green, blue, alpha = image.split()
     darkest = ImageChops.darker(ImageChops.darker(red, green), blue)  # how much ink each pixel has
     # The paper's brightness, from a strip round the edge (phone photos of paper are rarely pure white).
@@ -305,9 +362,9 @@ def _ink_only(path):
     pad = max(2, int(max(box[2] - box[0], box[3] - box[1]) * 0.02))
     image = image.crop((max(box[0] - pad, 0), max(box[1] - pad, 0),
                         min(box[2] + pad, image.width), min(box[3] + pad, image.height)))
-    image.thumbnail((1200, 1200))  # about 500 dpi at the printed size: sharp, and a small PDF
+    image.thumbnail((max_pixels, max_pixels))  # print resolution: sharp, and a small PDF
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG", optimize=True)
+    image.save(buffer, format="PNG")
     buffer.seek(0)
     return buffer
 
@@ -316,7 +373,7 @@ def _private_image(field, width, height):
     if not field:
         return None
     try:
-        prepared = _ink_only(field.path)
+        prepared = _prepared(field.path, (width, height), ink=True)
         if prepared is None:
             return None
         return Image(prepared, width=width, height=height, kind="proportional")
