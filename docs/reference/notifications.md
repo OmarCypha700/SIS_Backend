@@ -38,8 +38,9 @@ screens and in mailboxes. The link opens the signed-in page.
 
 ## Email: Brevo and the daily allowance
 
-Production sends email through Brevo's HTTP API (`api.brevo.com` is on PythonAnywhere's allowlist for
-free accounts; SMTP is not). The free plan allows **300 emails a day, shared with campaigns**.
+The portal sends email through Brevo. Brevo's free plan allows **300 emails a day, shared with
+campaigns**; the settings below keep the portal within whatever allowance the plan has
+([../operations/configuration.md](../operations/configuration.md)).
 
 * `EMAIL_DAILY_LIMIT` (default 300). Lower it if the same Brevo account also sends campaigns.
 * `EMAIL_SECURITY_RESERVE` (default 60) is kept for password resets and account set-up links. Alerts
@@ -50,7 +51,7 @@ free accounts; SMTP is not). The free plan allows **300 emails a day, shared wit
 * Alerts still waiting after 7 days are dropped. The in-app notification remains.
 * Password-reset and set-up links are generated when the email is actually sent, so a queued link is
   still valid. No link or token is ever stored.
-* Each person can switch alert emails off under *Profile → Notifications*. Security emails are
+* Each person can switch alert emails off under *My account → Notifications*. Security emails are
   always sent.
 * Importing many staff at once queues their set-up emails. Any that exceed today's allowance go out on
   the following days, and the import screen says how many are waiting.
@@ -59,14 +60,14 @@ Administrators see emails sent today, emails waiting and failures on the dashboa
 
 ## Delivery without background workers
 
-The target host has no background workers and allows one scheduled task a day, so the outbox is sent:
+The portal needs no background workers. The outbox is sent:
 
 1. **Straight away**: up to 15 messages, after the action that created them has been saved. Staff are
    sent first.
 2. **While people use the app**: every open app checks its unread count every minute. Each check also
    sends up to 10 waiting messages, at most once every 10 seconds per server process. A publication to
    150 students therefore reaches their devices within a minute or two during working hours.
-3. **Daily**: `python manage.py send_pending_messages` sends everything left. It also builds the email
+3. **By the scheduled task** ([../operations/maintenance.md](../operations/maintenance.md)), which sends everything left. It also builds the email
    digests, retries failures (up to 5 attempts), and prunes old data: read notifications after 180 days,
    outbox rows after 90 days, and devices that keep failing.
 
@@ -74,10 +75,9 @@ A failed email or push never breaks the action that caused it. The failure is lo
 
 ## Push notifications
 
-* Generate keys once with `python manage.py generate_vapid_keys` and put them in `.env`
-  (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT=mailto:...`). Without keys, push is off and
-  everything else still works.
-  Changing the keys disconnects every device, and people then have to turn push on again.
+* Push needs server keys, created once at installation
+  ([../operations/deployment.md](../operations/deployment.md), section 5). Without them push is off and
+  everything else still works. Changing the keys disconnects every device.
 * **Push is on by default.** Browsers only allow notifications after the person agrees once on each
   device, so:
   * if notifications are already allowed on the device, it is signed up for the account automatically
@@ -86,7 +86,7 @@ A failed email or push never breaks the action that caused it. The failure is lo
     *Allow* question. *Not now* hides it for 3 days;
   * on an iPhone or iPad in Safari, the prompt explains that the app must be added to the Home Screen
     first (Apple only allows push for installed apps);
-  * if the person turns push off under *Profile → Notifications*, that is remembered on the device and
+  * if the person turns push off under *My account → Notifications*, that is remembered on the device and
     it is never switched back on by itself. If they blocked notifications in the browser, the app cannot
     ask again: they have to allow them in the browser's site settings.
 * **What a notification looks like.** Like a message in a chat app: the institution's logo as the
@@ -97,8 +97,7 @@ A failed email or push never breaks the action that caused it. The failure is lo
   only the shape of that icon. Previews never contain marks, grades or other personal details.
 * Signing out removes the device's subscription, so a shared computer does not receive the previous
   person's notifications.
-* Push and the service worker need HTTPS. Vercel and PythonAnywhere provide it, and `localhost` works
-  for development.
+* Push and the installable app need the portal to be served over HTTPS.
 
 ### What works where
 
@@ -114,10 +113,8 @@ A failed email or push never breaks the action that caused it. The failure is lo
 When the portal is closed, the device's own notification sound is used. No browser lets a website set
 a custom push sound.
 
-The chime is original. It was synthesised by the frontend's `scripts/make-notification-sound.py` and is
-stored as `public/sounds/notification.wav`. To use another sound, replace that file with a short
-WAV/MP3 that your institution has the rights to use. Sounds from other apps, for example Snapchat's,
-are copyrighted.
+The chime is original to SIS. A different sound can be supplied in a custom build; use only a sound
+the institution has the rights to.
 
 ## The installable app (PWA)
 

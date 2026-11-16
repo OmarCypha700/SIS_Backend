@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
@@ -67,14 +68,20 @@ class CurrentUserSerializer(serializers.ModelSerializer):
     roles = serializers.SerializerMethodField()
     offices = serializers.SerializerMethodField()
     student = serializers.SerializerMethodField()
+    server_version = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id", "email", "title", "first_name", "last_name", "full_name", "phone", "role", "role_display",
             "roles", "offices", "capabilities", "must_change_password", "student", "email_alerts", "notification_sound",
+            "server_version",
         ]
         read_only_fields = [f for f in fields if f not in ("phone", "email_alerts", "notification_sound")]
+
+    def get_server_version(self, user) -> str:
+        """The release the server runs (signed-in users only), so support can tell which version is in use."""
+        return settings.SIS_VERSION
 
     def get_full_name(self, user) -> str:
         """A student's name as on their student record (with the middle name); staff names as on the account."""

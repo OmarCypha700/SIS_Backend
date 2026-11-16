@@ -21,19 +21,6 @@ the transcript will be **interim**: the programme is not marked Completed or Gra
 results are still unpublished. Unpublished results never appear on an official transcript. Interim
 transcripts are titled "(interim)", say why, and carry an INTERIM watermark.
 
-Every PDF the portal produces (official and student copies of transcripts, result slips, registration
-slips, receipts and fee statements) has the institution's name repeated faintly across the whole page:
-12 pt, horizontal rows, every other row offset. It is drawn over the content, so editing the text
-underneath does not remove it, but it is light enough to read and photocopy through. It is a solid 20%
-grey drawn in "multiply" mode, so black-and-white printers print it (they drop tones lighter than about
-10%) while text under it stays black. The INTERIM (and, on receipts, CANCELLED) stamp is drawn the same
-way, in 28% grey, over the content.
-
-The uploaded signature prints in a 62 × 22 mm space and the seal in 40 × 40 mm, each keeping its shape.
-Blank margins are cropped and the paper background is made transparent, so a phone photo of a signature
-works; a sharp image of at least about 600 pixels across prints best. The image's file size does not
-change the printed size; only very wide or very tall images print smaller, to keep their shape.
-
 The person issuing it enters who it is for (required) and chooses how it is signed:
 
 * **Print for hand signing and stamping** (the default). The PDF has a signature line, the
@@ -84,9 +71,28 @@ Codes are random and cannot be guessed from serial numbers, and lookups are rate
 
 ## Signature and seal images
 
-Upload them under *Institution settings → Official transcripts* (PNG, JPG or WebP, up to 2 MB).
+Upload them under *Institution settings → Official transcripts* (PNG, JPG or WebP, up to 2 MB and 12
+megapixels).
 
 * They are stored in `PRIVATE_MEDIA_ROOT` (default `private-media/`), outside the public `/media/`
   folder, so nobody can download them from a public address.
 * Only administrators can preview, replace or remove them.
-* Include this folder in your backups (see deployment.md, section 7).
+* Include this folder in your backups (see [../operations/maintenance.md](../operations/maintenance.md)).
+
+## Printed documents
+
+Every PDF the portal produces (official and student copies of transcripts, result slips, registration
+slips, receipts and fee statements) has the institution's name repeated faintly across the whole page:
+12 pt, horizontal rows, every other row offset. It is drawn over the content, so editing the text
+underneath does not remove it, but it is light enough to read and photocopy through. It is a solid 20%
+grey drawn in "multiply" mode, so black-and-white printers print it (they drop tones lighter than about
+10%) while text under it stays black. The INTERIM (and, on receipts, CANCELLED) stamp is drawn the same
+way, in 28% grey, over the content.
+
+The uploaded signature prints in a 62 × 22 mm space and the seal in 40 × 40 mm, each keeping its shape.
+Blank margins are cropped and the paper background is made transparent, so a phone photo of a signature
+works; a sharp image of at least about 600 pixels across prints best. The image's file size does not
+change the printed size; only very wide or very tall images print smaller, to keep their shape.
+
+The watermark and stamps deter casual alteration. They do not prove a document is genuine: only the
+verification code does.

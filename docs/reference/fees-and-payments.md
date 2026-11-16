@@ -1,4 +1,4 @@
-# School fees and online payment
+# Fees and payments
 
 Students see what they owe and pay school fees in the portal by **mobile money (all networks), card or
 bank**, through Paystack. The Accounts Office sets the fees, bills each class, records payments made at
@@ -118,43 +118,10 @@ semester's **late registration period**, but only after paying the **late regist
 
 ## Setting it up
 
-1. **Paystack account.**
-   * Register the institution as a business at <https://paystack.com> (Ghana). Paystack needs the
-     registration documents and a GHS bank account.
-   * Approval takes some days. Everything below works with **test keys** in the meantime.
-2. **Secret key.**
-   * In Paystack, go to *Settings → API Keys & Webhooks* and copy the **secret key**.
-   * Use `sk_test_…` while testing, and `sk_live_…` only when you go live.
-   * Put it in the server's `.env` (never in the code or in git):
-     ```
-     PAYSTACK_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxx
-     ```
-   * Reload the web app. `api.paystack.co` is on PythonAnywhere's free-account allowlist.
-   * Check it from a Bash console:
-     ```bash
-     cd ~/sis-backend && ~/.virtualenvs/sis/bin/python manage.py check_payment_setup --settings=config.settings.prod
-     ```
-     It says whether the key works and whether you are in test or live mode.
-3. **Webhook URL.** On the same Paystack page, set the webhook URL to
-   `https://<your-backend>/api/v1/payments/paystack/webhook/`
-   (for example `https://yourname.pythonanywhere.com/api/v1/payments/paystack/webhook/`). The webhook
-   confirms payments even if the student closes the page before returning.
-4. **Callback.**
-   * After paying, students return to `FRONTEND_URL/fees/return`, which confirms the payment straight
-     away. Check that `FRONTEND_URL` in `.env` is the portal's address.
-5. **Institution settings → School fees:**
-   * choose the billing period;
-   * set the share needed to register (default 60%);
-   * check the transaction fee rate (and cap, if any) against your Paystack pricing;
-   * turn on **Students can pay online**. This cannot be turned on without the key.
-6. **Daily task.** Use `python manage.py run_daily_tasks` as the PythonAnywhere scheduled task (see
-   `deployment.md`). It confirms payments still pending after 30 minutes, and marks any not completed
-   after 24 hours as *Not completed*.
-7. **Test before going live.**
-   * Set up a test fee, bill it to a test class, sign in as a student and pay.
-   * Paystack's test mode shows test cards and a test mobile-money number on the checkout page.
-   * Check the receipt, the balance and automatic clearance.
-   * Then switch to the live key.
+Installing online payment (the Paystack account, secret key, webhook and testing) is part of
+deployment: see [../operations/deployment.md](../operations/deployment.md), section 8. The daily
+scheduled task confirms payments still pending after 30 minutes and marks those not completed after
+24 hours as *Not completed* ([../operations/maintenance.md](../operations/maintenance.md)).
 
 ## Refunds and disputes
 

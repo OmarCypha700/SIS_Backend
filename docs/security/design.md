@@ -1,4 +1,8 @@
-# Security and data protection
+# Security design (internal)
+
+**Confidential: for the development team only.** This document gives exact limits, thresholds and code
+locations. Institutions receive [overview.md](overview.md) instead. Data protection responsibilities are
+in [data-protection.md](data-protection.md).
 
 ## Authentication design
 
@@ -153,29 +157,23 @@ headers. `python manage.py check --deploy --settings=config.settings.prod` passe
 deliberate HSTS-preload opt-in.
 
 Other protections: ORM parameterised queries (no raw SQL), React output encoding, uploads limited
-to PNG/JPG/WebP images ≤ 2 MB and UTF-8 CSV ≤ 5 MB / 2,000 rows, CSV exports escape formula
+to PNG/JPG/WebP images ≤ 2 MB and 12 megapixels and UTF-8 CSV ≤ 5 MB / 2,000 rows, CSV exports escape formula
 characters, generic error messages for server errors, request correlation ids.
 
-Dependency checks: `pip-audit -r requirements.txt` and `npm audit --omit=dev` (both clean when
-last run). Run them before each release.
+Dependency checks: run `pip-audit -r requirements.txt` and `npm audit --omit=dev` before each release,
+and record the result in the release notes.
 
-## Data protection (Ghana Data Protection Act, 2012 — Act 843)
+## Printed documents
 
-This section describes how the software supports compliance; it is not legal advice, and
-infrastructure separation alone does not make an institution compliant. Each institution (the
-data controller) should register with the Data Protection Commission and put the policies below
-in writing with the vendor (the data processor).
+Every PDF carries the institution's name across the whole page and, where it applies, an INTERIM or
+CANCELLED stamp, drawn over the content so that editing the text underneath does not remove them
+(`common/pdf.py`). They deter casual alteration; they are not proof of authenticity. Official
+transcripts are proved genuine only by their verification code, checked on the portal's public
+verification page.
 
-| Topic | How the system supports it | Institution / vendor responsibility |
-|---|---|---|
-| Minimisation | Only name, contact, programme and academic data are required; date of birth, gender, address and emergency contact are optional | Decide which optional fields are justified and leave the rest empty |
-| Authorised access | Role-based access, scoped querysets, reduced views for lecturers | Assign roles carefully; review staff accounts each semester |
-| Accountability | Audit log of sensitive actions and exports | Review the log; investigate unusual exports |
-| Retention | Records are deactivated, not deleted, preserving academic history | Define how long records are kept after graduation/withdrawal; purge per policy using a controlled script |
-| Portability / access requests | CSV export of student records; students can view their own data and results; transcripts are printable | Respond to subject access requests within statutory time limits |
-| Backups | See `deployment.md` | Encrypt backups, restrict access, test restores |
-| Incidents | Audit log + server logs support investigation | Agree an incident response plan and notification duties between institution and vendor |
-| Vendor access | Separate installation per institution; vendor uses named accounts | Contract defines vendor access, sub-processors, hosting location and termination |
-| Termination | Full database export (`dumpdata` or `pg_dump`) and media folder | On contract end: hand over data, then delete vendor copies and confirm in writing |
+## Source code and documents
 
-Never use real student records in development or demos without authorisation; use `seed_demo`.
+The repositories are private and proprietary (see `LICENSE`). Secrets live only in each server's `.env`,
+never in the repositories; the history has been checked for committed keys. If a key is ever exposed,
+rotate it at once: a new `DJANGO_SECRET_KEY` signs everyone out; a new Paystack key is issued from the
+Paystack dashboard; new VAPID keys disconnect every device's push.

@@ -15,7 +15,7 @@ class AuditLog(models.Model):
     Append-only record of sensitive actions.
 
     The application refuses to update or delete rows through the ORM. That does not stop
-    someone with direct database access; see docs/security.md for operational controls.
+    someone with direct database access; see docs/security/design.md for operational controls.
     """
 
     actor = models.ForeignKey(

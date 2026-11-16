@@ -1,4 +1,6 @@
-# API documentation
+# API
+
+Internal: for the development team and integrators under contract.
 
 Interactive documentation generated from the code (OpenAPI 3). Sign in as an administrator first;
 other users get 403.

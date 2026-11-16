@@ -219,14 +219,18 @@ REST_FRAMEWORK = {
     },
 }
 
+# The release this code is (semantic versioning). One number for the backend and the frontend; see
+# docs/developers/releasing.md. Shown to signed-in users and in the API documentation.
+SIS_VERSION = (BASE_DIR / "VERSION").read_text(encoding="utf-8").strip()
+
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Core SIS API",
+    "TITLE": "SIS API",
     "DESCRIPTION": (
-        "School Management System API. Authentication uses Django session cookies. "
+        "SIS student information system API. Authentication uses Django session cookies. "
         "Call GET /api/v1/auth/csrf/ first, then send the csrftoken cookie value as the "
         "X-CSRFToken header on every POST/PUT/PATCH/DELETE request."
     ),
-    "VERSION": "1.0.0",
+    "VERSION": SIS_VERSION,
     "SERVE_INCLUDE_SCHEMA": False,
     # The docs page runs on the app's own origin (through the frontend proxy), so only
     # administrators can open it and the Swagger UI files come from a fixed, never-changing release.

@@ -188,3 +188,13 @@ def test_a_students_name_includes_the_middle_name(world):
     student.save(update_fields=["middle_name"])
     me = client_for(student.user).get("/api/v1/auth/me/").data
     assert me["full_name"] == f"{student.first_name} Kofi {student.last_name}"
+
+
+def test_signed_in_users_see_the_release_the_server_runs(lecturer, settings):
+    from pathlib import Path
+
+    version = (Path(settings.BASE_DIR) / "VERSION").read_text(encoding="utf-8").strip()
+    assert re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?", version)  # semantic versioning
+    assert settings.SPECTACULAR_SETTINGS["VERSION"] == version
+    assert client_for(lecturer).get("/api/v1/auth/me/").data["server_version"] == version
+    assert APIClient().get("/api/v1/institution/").data.get("version") is None  # not public

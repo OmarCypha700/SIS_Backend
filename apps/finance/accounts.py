@@ -1,7 +1,7 @@
 """
 Student accounts: balances, the registration rule, and the Accounts Office's manual entries.
 
-The registration rule (see docs/payments.md):
+The registration rule (see docs/reference/fees-and-payments.md):
 
     needed = everything billed for earlier periods
            + registration_payment_percent % of the current period's bill

@@ -1,61 +1,39 @@
-# Core SIS — Backend (Django REST API)
+# SIS — Backend (Django REST API)
 
-School Management System for colleges, nursing and midwifery training institutions,
-technical institutions and universities. This repository is the API: student records,
-academic structure, course registration, assessment and results, and audit logging.
+**Proprietary and confidential.** Copyright © 2026 Alfa Calix Enterprise. All rights reserved. Use,
+copying or distribution without written permission is prohibited: see [LICENSE](LICENSE).
 
-The web interface lives in the sibling **SIS Frontend** project (Next.js). One deployment
-serves exactly one institution, with its own database.
+SIS is a student information system for colleges, nursing and midwifery training institutions,
+technical institutions and universities. This repository is the API: institution set-up, academic
+structure, students, registration, results and regulations, fees and payments, official transcripts,
+notifications and the audit log. The web portal is the **SIS Frontend** repository (Next.js). Each
+institution has its own installation and database.
 
-| Document | Contents |
-|---|---|
-| [docs/architecture.md](docs/architecture.md) | Modules, request flow, deployment model, future modules |
-| [docs/database-design.md](docs/database-design.md) | Entities, constraints, SQLite vs PostgreSQL |
-| [docs/api-documentation.md](docs/api-documentation.md) | Endpoint overview, auth, errors, pagination |
-| [docs/security.md](docs/security.md) | Auth design, permissions, audit, data protection (Ghana) |
-| [docs/testing.md](docs/testing.md) | Running backend and end-to-end tests |
-| [docs/deployment.md](docs/deployment.md) | PythonAnywhere, Vercel, PostgreSQL, new institutions, backups, updates, troubleshooting |
-| [docs/academic-regulations.md](docs/academic-regulations.md) | Resits, retakes, progression, probation and dismissal rules |
-| [docs/transcripts.md](docs/transcripts.md) | Official transcripts: issuing, signing, verification, permissions |
-| [docs/notifications.md](docs/notifications.md) | In-app, push and email notifications, Brevo limits, the installable app |
-| [docs/status.md](docs/status.md) | What is done, known limitations, next steps |
+* **Documentation:** [docs/README.md](docs/README.md), grouped by audience (operations, security,
+  reference, developers).
+* **Release notes, limitations and roadmap:** [CHANGELOG.md](CHANGELOG.md).
 
-## Quick start (local development)
+## Local development
 
-Prerequisites: Python 3.12+, Git. (Node.js 20+ for the frontend.)
+Prerequisites: Python 3.12+, Git; Node.js 20+ for the frontend.
 
 ```bash
-# 1. Create and activate a virtual environment
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-source .venv/bin/activate       # macOS / Linux
-
-# 2. Install dependencies (requirements-dev.txt also installs the test tools)
-pip install -r requirements-dev.txt
-
-# 3. Configure the environment
-cp .env.example .env            # Windows: copy .env.example .env
-#    The defaults use SQLite and are fine for development.
-
-# 4. Create the database
+.venv\Scripts\activate              # Windows
+source .venv/bin/activate           # macOS / Linux
+pip install -r requirements-dev.txt # includes the test tools
+cp .env.example .env                # Windows: copy .env.example .env  (defaults: SQLite, console email)
 python manage.py migrate
-
-# 5a. EITHER load fictitious demo data (recommended for a first look)...
-python manage.py seed_demo
-# 5b. ...OR create your first administrator for a clean installation
-python manage.py create_institution_admin --email you@example.edu --first-name Ama --last-name Mensah
-
-# 6. Run the API on http://127.0.0.1:8000
-python manage.py runserver
+python manage.py seed_demo          # fictitious demo data (or create_institution_admin for a clean start)
+python manage.py runserver          # http://127.0.0.1:8000
 ```
 
 Then start the frontend (see its README) and open http://localhost:3000.
 
-### Demo accounts (`seed_demo`)
+### Demo accounts (development only)
 
-`seed_demo` creates a fictitious institution ("Northridge College … (Demo)") and these
-accounts, all with the password `Demo-Password-2026` (override with the `DEMO_PASSWORD`
-environment variable before seeding). They exist only in your local database.
+`seed_demo` creates a fictitious institution with these accounts, all with the password
+`Demo-Password-2026` unless you set `DEMO_PASSWORD` before seeding:
 
 | Role | Email |
 |---|---|
@@ -66,38 +44,41 @@ environment variable before seeding). They exist only in your local database.
 | Lecturer | lecturer@northridge.example |
 | Student | student@northridge.example |
 
-The command refuses to run when `DEBUG` is off or when the database already contains
-academic data. Never run it against a database holding real records.
+The command refuses to run when `DEBUG` is off or the database already holds academic data. **Any
+demo reachable by others must be seeded with its own `DEMO_PASSWORD`**
+([docs/operations/demo-hosting.md](docs/operations/demo-hosting.md)). Never run it against real records.
 
-### Useful URLs
+### Useful URLs (development)
 
-- API root: `http://127.0.0.1:8000/api/v1/`
-- Interactive API docs (OpenAPI/Swagger): `http://127.0.0.1:8000/api/v1/docs/`
-- OpenAPI schema: `http://127.0.0.1:8000/api/v1/schema/`
-- Django admin (superusers only, enabled in development): `http://127.0.0.1:8000/django-admin/`
+* API root: `http://127.0.0.1:8000/api/v1/`
+* API documentation (administrators only): `http://127.0.0.1:8000/api/v1/docs/`
+* Django admin (superusers; development only by default): `http://127.0.0.1:8000/django-admin/`
 
-## Running tests
+## Tests
 
 ```bash
-pytest                    # 128 tests: permissions, workflows, calculations, regulations, imports, PDFs, audit
+pytest
 python manage.py makemigrations --check --dry-run
 ```
 
-End-to-end browser tests live in the frontend project (`npx playwright test`).
+End-to-end tests run from the frontend repository. See [docs/developers/testing.md](docs/developers/testing.md).
 
 ## Project layout
 
 ```
-config/            settings (base/dev/prod/test), URLs, WSGI
-common/            shared helpers: permissions, pagination, errors, CSV, middleware
+config/            settings (base, dev, prod, test), URLs, WSGI
+common/            shared helpers: permissions, pagination, errors, bulk actions, spreadsheets, PDFs, middleware
 apps/
-  institutions/    institution profile, academic regulations, student-number generation, seed_demo
-  accounts/        custom user, roles, result capabilities, auth endpoints, staff accounts
-  academics/       academic years, semesters, departments, levels, programmes, courses, offerings
-  students/        student records, status policies, history, CSV import/export
-  registration/    semester registration rules and workflow, class lists
-  results/         grading schemes, assessments, marks, approval workflow, amendments, resits, GPA/CGPA
-  progression/     end-of-semester progression reviews (standing, promotion, dismissal)
+  institutions/    institution profile and branding, app icons, academic regulations, seed_demo
+  accounts/        users, roles, appointments, sign-in security, passkeys, signed-in devices
+  academics/       years, semesters, departments, levels, programmes, courses, offerings
+  students/        student records, photos, status policies, history, imports and exports
+  registration/    registration rules and workflow, bulk registration, class lists
+  results/         grading, assessments, marks, workflow, amendments, resits, GPA/CGPA
+  progression/     progression reviews (standing, promotion, repeating, dismissal)
+  finance/         clearance, fee schedules, student ledger, payments, bank-statement import, late penalty
+  transcripts/     official transcripts and verification
+  notifications/   in-app, push and email notifications
   audit/           append-only audit log
   dashboard/       role-specific dashboard figures
 docs/              documentation

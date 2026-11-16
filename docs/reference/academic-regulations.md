@@ -1,8 +1,7 @@
 # Academic regulations: resits, retakes, progression, probation and dismissal
 
 The system does **not** contain any national or regulator rules. Each institution enters its
-own regulations under **Administration → Academic regulations** (`GET/PATCH /api/v1/academic-regulations/`,
-administrators only). Every rule is optional; a blank value switches it off, and with all rules off
+own regulations under **Administration → Academic regulations** (administrators only). Every rule is optional; a blank value switches it off, and with all rules off
 the system behaves as before. Record where the rules come from in the *Source* field.
 
 ## Settings

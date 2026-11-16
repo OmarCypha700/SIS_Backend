@@ -1,5 +1,8 @@
 # Testing
 
+Internal: for the development team. Test results are recorded per release in
+[CHANGELOG.md](../../CHANGELOG.md), not here.
+
 ## Backend (pytest)
 
 ```bash
@@ -12,7 +15,7 @@ pytest -k amendment            # by name
 Uses `config.settings.test` (in-memory SQLite, fast password hashing, in-memory email).
 Shared fixtures in `conftest.py` build a small institution (`world` fixture) and users for each role.
 
-Last full run: **128 passed**. Coverage by area:
+Coverage by area:
 
 | Area | Examples |
 |---|---|
@@ -25,15 +28,20 @@ Last full run: **128 passed**. Coverage by area:
 | Audit | immutability, redaction, read-only API with role scoping, request id |
 | Regulations | grade cap maths, retake cap, attempt limit, failed compulsory becomes compulsory, resit eligibility and permissions, full resit flow (coursework kept, cap applied, not-taken entries, student isolation, deadline, reason for on-behalf), progression proposals, override with reason preserved on recalculation, apply (promotion, probation, dismissal), consecutive-probation dismissal, provisional decisions skipped, applied reviews locked, permissions |
 | Imports, exports, PDFs | CSV and Excel reading (BOM, blank rows, numeric cells, .xls rejected, size limit), Excel exports with formula escaping, student import from Excel, marks template, marks import preview (header matching, out-of-range, unknown students, nothing saved until applied, audit source), marks import permissions and locking, course import (prerequisites in the same file, cycles, duplicates, curriculum placement, all-or-nothing, admin only), staff import (role aliases, no passwords, set-up email links that work), forgot-password for accounts without a password, PDF slips and transcripts with access control |
+| Sign-in security | growing wait after wrong passwords, alerts, passkey registration and sign-in, signed-in devices, signing out one or all other devices, password change keeping or ending other sign-ins, administrator sign-out everywhere, maximum sign-in length |
+| Fees and payments | billing preview and idempotence, the registration rule (arrears, exact thresholds, per semester and per year), transaction fee gross-up and cap, payment confirmation (signature, replay, mismatch), reconciliation, bank-statement import (duplicates, re-import), reversals and waivers, late penalty, automatic clearance, student isolation |
+| Transcripts and documents | issuing, frozen reprints, revoking, public verification, issuing permission; PDF watermark and stamps, signature and seal preparation, images embedded at print size |
+| Notifications | who is told for each event, no personal details in previews, email allowance and digests, push subscriptions linked to devices |
 | Seed | demo builds consistently; refuses without DEBUG or on a non-empty database |
 
-Also run before releases:
+Release checks (record the results in the release notes):
 
 ```bash
 python manage.py makemigrations --check --dry-run
 python manage.py spectacular --file schema.yml     # must produce no warnings
 DJANGO_SECRET_KEY=... DJANGO_ALLOWED_HOSTS=... python manage.py check --deploy --settings=config.settings.prod
 pip-audit -r requirements.txt
+cd "../SIS Frontend" && npm run lint && npm audit --omit=dev
 ```
 
 ## End-to-end (Playwright, frontend project)
@@ -48,17 +56,12 @@ The config starts a throw-away backend on port 8100 (`tests/e2e/start-backend.mj
 `e2e.sqlite3`, migrates and runs `seed_demo`) and a production build of the frontend on port 3100.
 Set `SIS_BACKEND_DIR` / `SIS_PYTHON` if the backend lives elsewhere.
 
-Journeys covered (last run: **14 passed**): redirect when signed out; generic login error; admin
-creates a student (with validation errors) and finds it; student registers and opens the slip,
-and is refused staff pages; lecturer configures assessments, enters and submits marks, API refuses
-lecturer publication; results officer approves (no publish button); registrar publishes; student
-sees the published grade; lecturer cannot open another lecturer's course; mobile navigation
-without horizontal overflow; administrator sets academic regulations (with validation); a resit is
-opened, a student registered by the registry, scored, approved, published with the grade cap; a
-progression review is prepared, an outcome overridden with a reason, and the review applied; the admin
-sidebar scrolls to its last item at a small window height and remembers collapsed groups; Excel export
-and PDF slip downloads; a lecturer imports marks from a file (errors shown, valid rows applied);
-an administrator imports courses (with curriculum placement) and staff accounts.
+Journeys covered include: signing in and out, wrong-password waits and passkeys; signed-in devices
+and signing a device out; students, imports and bulk actions (rows per page, selecting every matching
+record); registration by students, on their behalf, in bulk and late with a penalty; marks entry,
+import and the results workflow through publication; resits and progression reviews; financial
+clearance, fees, online payment against a simulated gateway, and bank-statement import; transcripts and
+verification; notifications and the installable app; and mobile layouts.
 
 ## PostgreSQL
 
@@ -69,5 +72,5 @@ The suite is database-agnostic. To run it on PostgreSQL (required before product
 DATABASE_URL=postgres://postgres:dev@localhost:5432/sis_test pytest
 ```
 
-The test database is created and destroyed automatically. **This has not yet been executed**:
-the development machine used to build this release had no PostgreSQL server.
+The test database is created and destroyed automatically. **Required before the first production
+installation and after any release that changes migrations**; record the result in the release notes.
