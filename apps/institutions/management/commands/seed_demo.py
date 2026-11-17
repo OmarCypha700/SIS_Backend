@@ -99,6 +99,7 @@ class Command(BaseCommand):
         self._user("registrar@northridge.example", Role.REGISTRAR, "Kwesi", "Registrar", password)
         officer = self._user("exams@northridge.example", Role.RESULTS_OFFICER, "Efua", "Examiner", password)
         self._user("accounts@northridge.example", Role.ACCOUNTS_OFFICER, "Ama", "Accounts", password)
+        self._user("qa@northridge.example", Role.QA_OFFICER, "Esi", "Quality", password)
         publisher = User.objects.get(email="registrar@northridge.example")
         lecturers = [
             self._user("lecturer@northridge.example", Role.LECTURER, "Yaw", "Lecturer", password, title="Dr."),

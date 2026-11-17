@@ -69,15 +69,23 @@ class CurrentUserSerializer(serializers.ModelSerializer):
     offices = serializers.SerializerMethodField()
     student = serializers.SerializerMethodField()
     server_version = serializers.SerializerMethodField()
+    features = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id", "email", "title", "first_name", "last_name", "full_name", "phone", "role", "role_display",
             "roles", "offices", "capabilities", "must_change_password", "student", "email_alerts", "notification_sound",
-            "server_version",
+            "server_version", "features",
         ]
         read_only_fields = [f for f in fields if f not in ("phone", "email_alerts", "notification_sound")]
+
+    @extend_schema_field({"type": "object", "additionalProperties": {"type": "boolean"}})
+    def get_features(self, user):
+        """Optional pages the institution has switched on for this person."""
+        from apps.evaluations.services import tutors_see_feedback
+
+        return {"teaching_feedback": user.role != Role.STUDENT and tutors_see_feedback()}
 
     def get_server_version(self, user) -> str:
         """The release the server runs (signed-in users only), so support can tell which version is in use."""

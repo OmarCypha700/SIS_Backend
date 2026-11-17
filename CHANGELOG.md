@@ -6,6 +6,27 @@ Each release lists what changed, what to do when updating, and the checks it pas
 backend and the frontend to the same release together. Version numbers follow semantic versioning:
 see [docs/developers/releasing.md](docs/developers/releasing.md).
 
+## 1.1.0 — unreleased
+
+### New
+
+* **Tutor assessment before results** (off by default; *Institution settings → Tutor assessment*). When a
+  course's results are published, students assess its tutors before seeing their result for it, and all of
+  them before seeing the semester GPA and CGPA. The hold lifts when the assessment closes (14 days by
+  default). Answers are anonymous by design. See
+  [docs/reference/tutor-assessment.md](docs/reference/tutor-assessment.md).
+* **Quality Assurance Officer** role and office: questionnaires (with a standard one to start from), reports
+  per tutor and course with Excel export, and review of comments before tutors see them.
+* **PDF name watermark setting:** institutions can switch off the institution's name printed across every page
+  of PDFs (*Institution settings → Official transcripts*). INTERIM and CANCELLED stamps are unaffected.
+* **My teaching feedback** for tutors, after each assessment closes, if the institution allows it (*Tutors can see their own feedback*, on by default).
+
+### Updating
+
+Run `migrate` (new `evaluations` app; new settings and notification kinds). The scheduled task now also sends
+assessment reminders (`send_assessment_notices`, included in `run_daily_tasks`). Nothing changes for
+students until an administrator switches tutor assessment on.
+
 ## 1.0.0-rc.1 — release candidate (16 November 2026)
 
 The first release candidate for 1.0.0, for pilot and test portals. It becomes **1.0.0** once it passes

@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "apps.notifications",
     "apps.transcripts",
     "apps.finance",
+    "apps.evaluations",
     "apps.dashboard",
 ]
 

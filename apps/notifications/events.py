@@ -70,14 +70,42 @@ def sheet_approved(sheet, actor):
            link=f"/results/courses/{offering.pk}")
 
 
-def sheet_published(sheet, actor):
+def sheet_published(sheet, actor, assessment=None):
     offering = _offering(sheet)
     notify(lecturers_of(offering), kind=Kind.RESULTS_PUBLISHED, actor=actor,
            title=f"Results published for {offering.course.code}",
-           body=f"Students can now see their results for {_course(offering)}.", link=f"/results/courses/{offering.pk}")
-    notify(_students_of_sheet(sheet), kind=Kind.RESULTS_PUBLISHED, actor=actor,
-           title=f"New result: {offering.course.code}",
-           body=f"Your result for {_course(offering)} is now available.", link="/my-results")
+           body=f"Students can now see their results for {_course(offering)}." if assessment is None else
+                f"Results for {_course(offering)} are published. Students see them after assessing the course's "
+                f"tutors, or from {assessment.closes_on:%d %B}.",
+           link=f"/results/courses/{offering.pk}")
+    if assessment is None:
+        notify(_students_of_sheet(sheet), kind=Kind.RESULTS_PUBLISHED, actor=actor,
+               title=f"New result: {offering.course.code}",
+               body=f"Your result for {_course(offering)} is now available.", link="/my-results")
+    else:
+        notify(_students_of_sheet(sheet), kind=Kind.ASSESSMENT_DUE, actor=actor,
+               title=f"Results published for {offering.course.code}",
+               body=f"Assess your tutor for {_course(offering)} to see your result. It takes about two minutes and "
+                    f"is anonymous.", link=f"/my-results/assess/{assessment.pk}")
+
+
+def assessment_due(assessment, students):
+    """Reminder a few days before a tutor assessment closes."""
+    offering = assessment.offering
+    notify(student_users(students), kind=Kind.ASSESSMENT_DUE,
+           title=f"Assess your tutor for {offering.course.code}",
+           body=f"Your result for {offering.course.code} is waiting. Assess your tutor to see it; it takes about "
+                f"two minutes and is anonymous.",
+           link=f"/my-results/assess/{assessment.pk}")
+
+
+def feedback_ready(assessment):
+    """Tutors: the student assessment of their course has closed."""
+    offering = assessment.offering
+    notify(list(assessment.lecturers.filter(is_active=True)), kind=Kind.FEEDBACK_READY,
+           title=f"Student feedback for {offering.course.code}",
+           body=f"The student assessment of {_course(offering)} has closed. See your feedback.",
+           link="/results/feedback", email=False)
 
 
 # --- Amendments ---------------------------------------------------------------------

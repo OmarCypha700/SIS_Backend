@@ -297,6 +297,17 @@ def test_every_pdf_page_carries_the_institution_name_across_the_whole_page(world
     assert content[:4] == b"%PDF"
     assert drawn and set(drawn) == {world.profile.name}
 
+    # Institutions can switch it off; the INTERIM / CANCELLED stamps are separate and unaffected.
+    world.profile.pdf_name_watermark = False
+    world.profile.save()
+    drawn.clear()
+    pdf_module._name_watermark = lambda c, name: drawn.append(name)
+    try:
+        assert client_for(world.student.user).get("/api/v1/my-results/transcript-pdf/").content[:4] == b"%PDF"
+    finally:
+        pdf_module._name_watermark = original
+    assert drawn == []
+
 
 def test_signature_and_seal_images_are_cropped_to_the_ink_with_the_paper_made_transparent(tmp_path):
     """A photo of a signature on greyish paper with wide margins prints as the signature alone, large."""

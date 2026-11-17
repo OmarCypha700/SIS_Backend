@@ -73,6 +73,9 @@ password change are rate limited (`429`).
 | Student fees | `my-fees/` (statement and what is needed to register), `my-fees/quote/?amount=`, `my-fees/pay/` (`amount`: returns Paystack's `authorization_url`), `my-fees/payments/{reference}/verify/`, `my-fees/payments/{reference}/receipt/`, `my-fees/statement-pdf/` | Student (own account only) |
 | Paystack webhook | `payments/paystack/webhook/` (signed with `x-paystack-signature`; the payment is still verified with Paystack before crediting) | Paystack |
 | Year changes | `result-sheets/{id}/excuse/` (`registration`, `reason`, `excused`), `registrations/{id}/withdraw/` (`reason`), `students/{id}/change-status/` (`withdraw_from_semester`), `progression-reviews/generate/` (`follow_up`), `progression-reviews/{id}/apply/` (`acknowledge_outstanding`) | As named |
+| Tutor assessment (students) | `my-assessments/` (waiting), `my-assessments/{id}/` (questions, tutors), `my-assessments/{id}/submit/` (`lecturer`, `answers`: returns the result when the course unlocks). Held results come back from `my-results/` with `assessment_required` and blank grades; slips and statements answer 409 `assessment_required` | Student |
+| Tutor assessment (QA) | `questionnaires/` (CRUD; `{id}/activate/`, `{id}/copy/`, `load-preset/`), `tutor-assessments/` (`?semester=&department=&lecturer=&search=`), `tutor-assessments/{id}/`, `tutor-assessments/export/`, `tutor-assessments/comments/?status=`, `tutor-assessments/comments/{uuid}/review/` (`status`, `reason`) | Admin and QA Officer |
+| Teaching feedback | `my-teaching-feedback/` (closed assessments only) | Lecturer |
 | Dashboard | `dashboard/` | Everyone (role-specific payload) |
 
 ## Examples

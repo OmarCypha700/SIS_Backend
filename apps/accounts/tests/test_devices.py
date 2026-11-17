@@ -259,3 +259,25 @@ def test_daily_cleanup_removes_expired_sessions_and_their_devices(lecturer):
     assert list(SignedInDevice.objects.filter(user=lecturer)) == [device_of(live)]
     subscription.refresh_from_db()  # an expired sign-in keeps its notifications
     assert subscription.device is None
+
+
+def test_signing_in_again_in_a_browser_already_signed_in_refreshes_its_device(lecturer):
+    """Django keeps the session when the same person signs in again; the device row must not be duplicated."""
+    client = sign_in(lecturer)
+    device = device_of(client)
+    _age_sign_in(client, 23 * 3600)
+    again = client.post("/api/v1/auth/login/", {"email": lecturer.email, "password": PASSWORD}, format="json")
+    assert again.status_code == 200
+    assert SignedInDevice.objects.filter(user=lecturer).count() == 1
+    refreshed = device_of(client)
+    assert refreshed.pk == device.pk and refreshed.signed_in_at > device.signed_in_at
+    _age_sign_in(client, 0)  # the maximum sign-in length counts from the new sign-in
+    assert signed_in(client)
+
+    # Signing in as someone else in the same browser starts a fresh session and device.
+    other = make_user(Role.LECTURER)
+    assert client.post("/api/v1/auth/login/", {"email": other.email, "password": PASSWORD},
+                       format="json").status_code == 200
+    assert SignedInDevice.objects.filter(user=other).count() == 1
+    # The first person's session has ended: it is no longer listed (the daily cleanup removes its row).
+    assert not devices.live_devices(lecturer).exists()

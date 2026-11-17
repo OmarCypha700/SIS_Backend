@@ -50,6 +50,12 @@ Payment (student, reference, source ONLINE/MANUAL, status, amount, fee, total, c
 
 IssuedTranscript (student, serial, verification_code, frozen record, signing, interim, print count, revoked)
 
+Questionnaire (name, is_active: one) ── Question (order, text, label, RATING/COMMENT, required)
+CourseAssessment (offering 1:1, questions snapshot, lecturers, opens_on, closes_on)
+  ├── AssessmentCompletion (student, lecturer, completed_on date)       — who has assessed
+  ├── AssessmentResponse (UUID, lecturer, ratings, uniform, submitted_on date) — what, no student
+  └── AssessmentComment (UUID, lecturer, question, text, review status)        — what, no student
+
 Notification (recipient, kind, title, body, link, read_at)
 PushSubscription (user, endpoint, keys, device?)   OutgoingMessage (channel, recipient, status, attempts)
 

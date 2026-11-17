@@ -67,10 +67,16 @@ def record_sign_in(request, user, method=SignInMethod.PASSWORD):
     if not session.session_key:
         session.save()
     now = timezone.now()
-    device = SignedInDevice.objects.create(
-        user=user, session_key=session.session_key, method=method, signed_in_at=now, last_seen_at=now,
-        user_agent=request.headers.get("User-Agent", "")[:300] if hasattr(request, "headers") else "",
-        ip_address=_client_ip(request),
+    # Signing in again in a browser that is already signed in as the same person keeps the same session
+    # (Django only starts a new one for a different person), so that session's row is refreshed rather
+    # than a second one added. It counts as a fresh sign-in for the maximum sign-in length.
+    device, _ = SignedInDevice.objects.update_or_create(
+        session_key=session.session_key,
+        defaults={
+            "user": user, "method": method, "signed_in_at": now, "last_seen_at": now,
+            "user_agent": request.headers.get("User-Agent", "")[:300] if hasattr(request, "headers") else "",
+            "ip_address": _client_ip(request),
+        },
     )
     session[DEVICE_ID] = device.pk
     session[SIGNED_IN_AT] = int(now.timestamp())

@@ -149,7 +149,9 @@ def _stamp_watermark(canvas, word):
 
 def _render(story, *, reference, footer_text="", watermark=""):
     buffer = io.BytesIO()
-    institution = InstitutionProfile.load().name
+    profile = InstitutionProfile.load()
+    institution = profile.name
+    name_mark = profile.pdf_name_watermark  # an institution setting; the INTERIM / CANCELLED stamps always print
     generated = timezone.localtime().strftime("%d %b %Y %H:%M")
 
     def on_page(canvas, doc):
@@ -166,7 +168,8 @@ def _render(story, *, reference, footer_text="", watermark=""):
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=12 * mm,
                             bottomMargin=18 * mm, title=reference, author=institution)
     def after_page():  # after the content: on top of it, on every page
-        _name_watermark(doc.canv, institution)
+        if name_mark:
+            _name_watermark(doc.canv, institution)
         _stamp_watermark(doc.canv, watermark)
 
     doc.afterPage = after_page

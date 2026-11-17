@@ -22,6 +22,8 @@ class Kind(models.TextChoices):
     PAYMENT_RECEIVED = "PAYMENT_RECEIVED", "Payment received"
     PAYMENT_ATTENTION = "PAYMENT_ATTENTION", "Payment needs attention"
     SECURITY = "SECURITY", "Account security"
+    ASSESSMENT_DUE = "ASSESSMENT_DUE", "Tutor assessment"
+    FEEDBACK_READY = "FEEDBACK_READY", "Teaching feedback"
     TEST = "TEST", "Test notification"
 
 

@@ -397,7 +397,10 @@ def publish_sheet(sheet, *, actor, comment=""):
     sheet.results.update(is_published=True, published_at=now)
     _supersede_repeated(sheet)
     _record(sheet, previous, actor, comment, "published")
-    notify_events.sheet_published(sheet, actor)
+    from apps.evaluations.services import open_for
+
+    assessment = open_for(sheet)  # students assess the tutors first, when the institution asks for it
+    notify_events.sheet_published(sheet, actor, assessment=assessment)
     return sheet
 
 
@@ -604,6 +607,7 @@ def build_academic_record(student, *, published_only=True):
             "semester": semester.name,
             "academic_year": semester.academic_year.name,
             "courses": [{
+                "offering_id": r.offering_id,
                 "course_code": r.offering.course.code,
                 "course_title": r.offering.course.title,
                 "credits": r.credits,

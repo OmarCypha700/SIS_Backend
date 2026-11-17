@@ -1,5 +1,8 @@
 """Role-specific dashboard figures, all computed from live data."""
+import datetime
+
 from django.db.models import Count, Q
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -10,6 +13,7 @@ from apps.accounts import appointments
 from apps.finance import services as finance
 from apps.accounts.models import OVERSIGHT_ROLES, Role
 from apps.audit.models import AuditLog
+from apps.institutions.models import InstitutionProfile
 from apps.registration.models import CourseRegistration, RegistrationStatus, SemesterRegistration
 from apps.results import signoff
 from apps.results.models import AmendmentStatus, ResultAmendment, ResultSheet, SheetStatus, StudentMark
@@ -150,7 +154,11 @@ def _student_dashboard(user, semester):
             }
     policy = StatusPolicy.for_status(student.status)
     can_see = policy.can_view_results and not finance.results_withheld(student)
-    record = build_academic_record(student, published_only=True) if can_see else None
+    record = None
+    if can_see:
+        from apps.evaluations.services import hold
+
+        record = hold(build_academic_record(student, published_only=True), student)
     return {
         "kind": "student",
         "current_semester": _semester_payload(semester),
@@ -163,6 +171,7 @@ def _student_dashboard(user, semester):
             "cgpa": record["summary"]["cgpa"], "credits_earned": record["summary"]["credits_earned"],
             "required_credits": record["summary"]["required_credits"],
             "latest": record["semesters"][-1] if record["semesters"] else None,
+            "assessments_pending": record["assessments_pending"],
         } if record else None,
     }
 
@@ -180,6 +189,31 @@ def _accounts_dashboard(semester):
     return data
 
 
+def _qa_dashboard(semester):
+    """Quality assurance: tutor assessments open, comments waiting, and recent response rates."""
+    from apps.evaluations.models import AssessmentComment, CommentStatus, CourseAssessment
+    from apps.evaluations.services import report_rows
+
+    today = timezone.localdate()
+    recent = (CourseAssessment.objects.filter(closes_on__gte=today - datetime.timedelta(days=90))
+              .select_related("offering__course__department", "offering__semester__academic_year")
+              .prefetch_related("lecturers"))
+    rows = report_rows(recent)
+    responses = sum(r["responses"] for r in rows)
+    eligible = sum(r["eligible"] for r in rows)
+    return {
+        "kind": "quality",
+        "current_semester": _semester_payload(semester),
+        "quality": {
+            "open": recent.filter(closes_on__gte=today).count(),
+            "comments_to_review": AssessmentComment.objects.filter(status=CommentStatus.PENDING).count(),
+            "responses": responses,
+            "response_rate": round(responses * 100 / eligible) if eligible else None,
+            "enabled": InstitutionProfile.load().tutor_assessment_enabled,
+        },
+    }
+
+
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -189,6 +223,8 @@ class DashboardView(APIView):
         user = request.user
         if user.has_any_role(Role.ACCOUNTS_OFFICER) and not user.has_any_role(*OVERSIGHT_ROLES, Role.LECTURER):
             return Response(_accounts_dashboard(semester))
+        if user.has_any_role(Role.QA_OFFICER) and not user.has_any_role(*OVERSIGHT_ROLES, Role.LECTURER):
+            return Response(_qa_dashboard(semester))
         if user.teaches_only:
             return Response(_lecturer_dashboard(user, semester))
         if user.has_any_role(Role.ADMIN, Role.REGISTRAR):

@@ -97,6 +97,25 @@ class InstitutionProfile(TimeStampedModel):
         help_text="Largest transaction fee for one payment, if the provider caps it. Blank: no cap.",
     )
 
+    # Tutor assessment: students assess each course's tutors before seeing that course's result.
+    tutor_assessment_enabled = models.BooleanField(
+        default=False, help_text="Students assess each course's tutors before they can see their result for it, and "
+                                 "all of them before they see the semester GPA.",
+    )
+    tutor_assessment_days = models.PositiveSmallIntegerField(
+        default=14, validators=[MinValueValidator(3), MaxValueValidator(60)],
+        help_text="Days after results are published during which students assess their tutors. After that the "
+                  "results show whether or not they did.",
+    )
+    tutor_feedback_to_tutors = models.BooleanField(
+        default=True, help_text="Tutors can see their own assessment results (averages and approved comments) after "
+                                "each assessment closes. Off: only quality assurance and administrators see them.",
+    )
+    tutor_assessment_min_responses = models.PositiveSmallIntegerField(
+        default=5, validators=[MinValueValidator(3), MaxValueValidator(20)],
+        help_text="Responses a tutor needs for a course before averages are shown, so no student can be identified.",
+    )
+
     # Sign-in sessions: besides 8 hours without activity, a sign-in ends this long after it started.
     student_session_days = models.PositiveSmallIntegerField(
         default=7, validators=[MinValueValidator(1), MaxValueValidator(90)],
@@ -133,6 +152,10 @@ class InstitutionProfile(TimeStampedModel):
                   "padded to 6 digits.",
     )
     transcript_footer = models.TextField(blank=True, help_text="Extra line printed at the end of official transcripts")
+    pdf_name_watermark = models.BooleanField(
+        default=True, help_text="Print the institution's name faintly across every page of every PDF (transcripts, "
+                                "result and registration slips, receipts, statements).",
+    )
     # Kept outside the public media folder: anyone could otherwise download and reuse them.
     transcript_signature = models.ImageField(
         upload_to="transcripts/", storage=private_storage, blank=True,

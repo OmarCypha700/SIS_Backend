@@ -322,15 +322,21 @@ class MyResultsViewSet(viewsets.ViewSet):
                               "Please contact the Accounts Office.", code="results_withheld", status_code=403)
         return student
 
+    def _record(self, student):
+        """The student's record as they may see it now (results hidden until tutors are assessed)."""
+        from apps.evaluations.services import hold
+
+        return hold(services.build_academic_record(student, published_only=True), student)
+
     @extend_schema(responses=OpenApiTypes.OBJECT)
     def list(self, request):
-        return Response(services.build_academic_record(self._student(request), published_only=True))
+        return Response(self._record(self._student(request)))
 
     @extend_schema(parameters=[OpenApiParameter("semester", int, required=True)], responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=["get"])
     def slip(self, request):
         student = self._student(request)
-        record = services.build_academic_record(student, published_only=True)
+        record = self._record(student)
         try:
             semester_id = int(request.query_params.get("semester", ""))
         except ValueError:
@@ -346,11 +352,16 @@ class MyResultsViewSet(viewsets.ViewSet):
                    responses={(200, "application/pdf"): OpenApiTypes.BINARY})
     @action(detail=False, methods=["get"], url_path="slip-pdf")
     def slip_pdf(self, request):
-        record = services.build_academic_record(self._student(request), published_only=True)
+        from apps.evaluations.services import semester_on_hold
+
+        record = self._record(self._student(request))
         try:
             semester_id = int(request.query_params.get("semester", ""))
         except ValueError:
             raise DomainError("Choose a semester.", code="semester_required") from None
+        if semester_on_hold(record, semester_id):
+            raise DomainError("Assess your tutors for this semester first; the slip is ready once you have.",
+                              code="assessment_required", status_code=409)
         entry = next((s for s in record["semesters"] if s["semester_id"] == semester_id), None)
         if entry is None:
             raise DomainError("No published results for that semester.", code="not_found", status_code=404)
@@ -359,7 +370,10 @@ class MyResultsViewSet(viewsets.ViewSet):
     @extend_schema(responses={(200, "application/pdf"): OpenApiTypes.BINARY})
     @action(detail=False, methods=["get"], url_path="transcript-pdf")
     def transcript_pdf(self, request):
-        record = services.build_academic_record(self._student(request), published_only=True)
+        record = self._record(self._student(request))
+        if record["assessments_pending"]:
+            raise DomainError("Assess your tutors first; your statement is ready once you have.",
+                              code="assessment_required", status_code=409)
         content = pdf.transcript(record, title="Statement of results")
         return pdf_response(content, f"statement-{record['student']['student_number']}.pdf")
 

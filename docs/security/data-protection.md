@@ -18,6 +18,7 @@ confirm your obligations with your legal adviser and the Data Protection Commiss
 | Minimisation | Only name, contact, programme and academic data are required; date of birth, gender, address and emergency contact are optional | Institution: decide which optional fields are justified, and leave the rest empty |
 | Authorised access | Roles, appointments, deny-by-default access, reduced views for lecturers | Institution: give roles carefully; review staff accounts and appointments each semester |
 | Accountability | Audit log of sensitive actions, including exports, with the capacity each person acted in | Institution: review the log, especially exports; investigate anything unusual |
+| Tutor assessment | Answers are stored with no link to the student; averages only above a minimum number of responses; comments reviewed before tutors see them | Institution: tell students it is anonymous (privacy notice); never try to identify who wrote a comment |
 | Accuracy | Students see their own records; changes are recorded with reasons | Institution: correct records on request |
 | Retention | Records are deactivated, not deleted, to keep academic history | Institution: set how long records are kept after graduation or withdrawal; Alfa Calix Enterprise purges on instruction with a controlled, audited procedure |
 | Access requests | Exports of student records; students see their own data, results and fees; transcripts | Institution: answer requests within the legal time limits |
@@ -64,7 +65,9 @@ Adapt and publish this, for example on the institution's website and in the stud
 > sign-ins and actions in the portal.
 >
 > We use this information to run your studies or your work, to issue results and transcripts, to collect
-> fees and to keep the portal secure. Staff see only what their role needs. Online payments are processed
+> fees and to keep the portal secure. When results are published you may be asked to assess your tutors
+> first; your answers are stored without your name or student number and are reported only as averages
+> from several students, so no one, including your tutor, can tell what you said. Staff see only what their role needs. Online payments are processed
 > by our payment provider; we never receive your card number or mobile-money PIN.
 >
 > The portal is provided and hosted for us by Alfa Calix Enterprise and its hosting providers, under a

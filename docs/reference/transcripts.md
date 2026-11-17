@@ -81,8 +81,10 @@ megapixels).
 
 ## Printed documents
 
-Every PDF the portal produces (official and student copies of transcripts, result slips, registration
-slips, receipts and fee statements) has the institution's name repeated faintly across the whole page:
+Unless switched off under *Institution settings → Official transcripts → Print the institution's name across
+every page of PDFs* (on by default), every PDF the portal produces (official and student copies of
+transcripts, result slips, registration slips, receipts and fee statements) has the institution's name
+repeated faintly across the whole page:
 12 pt, horizontal rows, every other row offset. It is drawn over the content, so editing the text
 underneath does not remove it, but it is light enough to read and photocopy through. It is a solid 20%
 grey drawn in "multiply" mode, so black-and-white printers print it (they drop tones lighter than about

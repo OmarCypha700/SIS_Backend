@@ -34,6 +34,7 @@ For administrators, support staff and operators who need the detail behind a scr
 | [reference/fees-and-payments.md](reference/fees-and-payments.md) | Fee billing, the registration rule, late penalty, payments, bank-statement import |
 | [reference/transcripts.md](reference/transcripts.md) | Official transcripts, verification, printed documents, signature and seal |
 | [reference/notifications.md](reference/notifications.md) | In-app, push and email notifications and the installable app |
+| [reference/tutor-assessment.md](reference/tutor-assessment.md) | Students assess tutors before seeing results: rules, anonymity, who sees what, reports |
 
 ## Developers: internal
 
@@ -44,6 +45,7 @@ For administrators, support staff and operators who need the detail behind a scr
 | [developers/api.md](developers/api.md) | API conventions and endpoint overview (the generated API docs are the full reference) |
 | [developers/testing.md](developers/testing.md) | Backend and end-to-end tests, release checks |
 | [developers/releasing.md](developers/releasing.md) | Version numbers, when to change them, and the release routine |
+| [developers/sis-release-guide.pdf](developers/sis-release-guide.pdf) | Printable terminal guide: git tags, releasing, deploying from a tag, fixes, rollback, quick reference |
 
 Release notes, current limitations and the roadmap are in [CHANGELOG.md](../CHANGELOG.md).
 
